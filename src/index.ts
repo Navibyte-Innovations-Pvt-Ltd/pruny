@@ -53,6 +53,9 @@ program
 program.action(async (options: PrunyOptions) => {
   const startTime = Date.now();
 
+  // Auto-detect non-interactive environment (piped stdin, CI, etc.)
+  const isNonInteractive = !process.stdin.isTTY || !!process.env.CI;
+
   try {
     // 1. Setup Configuration
     // 1. Setup Configuration
@@ -132,7 +135,7 @@ program.action(async (options: PrunyOptions) => {
             appsToScan.push(...availableApps.filter(app => !ignoredApps.includes(app)));
           } else if (options.folder) {
             appsToScan.push(...availableApps);
-          } else if (!options.ignoreApps && !options.filter && !options.json) {
+          } else if (!isNonInteractive && !options.ignoreApps && !options.filter && !options.json) {
             const response = await prompts({
               type: 'select',
               name: 'selected',
@@ -248,6 +251,11 @@ program.action(async (options: PrunyOptions) => {
             if (issues > 0) {
               process.exit(1);
             }
+          } else if (isNonInteractive) {
+            // Non-interactive: print report only, no prompts
+            if (hasUnusedItems(result)) {
+              printDetailedReport(result);
+            }
           } else if (hasUnusedItems(result)) {
             // Interactive fix menu for single projects — same as monorepo --fix flow
             if (options.verbose) {
@@ -288,7 +296,7 @@ program.action(async (options: PrunyOptions) => {
       }
 
       // If we are not in a monorepo OR we finished all apps without "Back" OR non-interactive
-      if (!isMonorepo || (!requestedBack && appsToScan.length > 0) || options.json || options.filter || options.all) {
+      if (!isMonorepo || (!requestedBack && appsToScan.length > 0) || options.json || options.filter || options.all || isNonInteractive) {
         break;
       }
 
