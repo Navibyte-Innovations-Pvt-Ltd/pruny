@@ -1,3 +1,12 @@
+# [1.34.0](https://github.com/webnaresh/pruny/compare/v1.33.1...v1.34.0) (2026-02-25)
+
+
+### Features
+
+* add bug report issue template ([948849e](https://github.com/webnaresh/pruny/commit/948849e75d5b5b8e891ad328988f5f0fc3864f42))
+* add feature request issue template ([5d5890a](https://github.com/webnaresh/pruny/commit/5d5890a5e903e5a80213ee2fd8b8b8ae2ad10f3f))
+* add issue template config with discussions link ([e785ae4](https://github.com/webnaresh/pruny/commit/e785ae4cfd7839899146b18a2e9d3946a544bc45))
+
 ## [1.33.1](https://github.com/webnaresh/pruny/compare/v1.33.0...v1.33.1) (2026-02-25)
 
 

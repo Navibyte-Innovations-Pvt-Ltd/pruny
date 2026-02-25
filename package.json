@@ -1,6 +1,6 @@
 {
   "name": "pruny",
-  "version": "1.33.1",
+  "version": "1.34.0",
   "description": "Find and remove unused Next.js API routes & Nest.js Controllers",
   "type": "module",
   "files": [
