@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'bun:test';
+import {
+  extractApiReferences,
+  EXPORTED_METHOD_PATTERN,
+  NEST_CONTROLLER_PATTERN,
+  NEST_METHOD_PATTERN,
+} from '../src/patterns.js';
+
+describe('extractApiReferences', () => {
+  it('should detect fetch calls', () => {
+    const refs = extractApiReferences(`fetch('/api/users')`);
+    expect(refs.some((r) => r.path === '/api/users')).toBe(true);
+  });
+
+  it('should detect axios.get with method', () => {
+    const refs = extractApiReferences(`axios.get('/api/users')`);
+    expect(refs.some((r) => r.path === '/api/users' && r.method === 'GET')).toBe(true);
+  });
+
+  it('should detect axios.post with method', () => {
+    const refs = extractApiReferences(`axios.post('/api/users')`);
+    expect(refs.some((r) => r.path === '/api/users' && r.method === 'POST')).toBe(true);
+  });
+
+  it('should detect axios.delete with method', () => {
+    const refs = extractApiReferences(`axios.delete('/api/users/1')`);
+    expect(refs.some((r) => r.path === '/api/users/1' && r.method === 'DELETE')).toBe(true);
+  });
+
+  it('should detect useSWR as GET', () => {
+    const refs = extractApiReferences(`useSWR('/api/users')`);
+    expect(refs.some((r) => r.path === '/api/users' && r.method === 'GET')).toBe(true);
+  });
+
+  it('should detect template literal API paths', () => {
+    const refs = extractApiReferences('fetch(`/api/users/${id}`)');
+    expect(refs.some((r) => r.path.startsWith('/api/users'))).toBe(true);
+  });
+
+  it('should detect string literal API paths', () => {
+    const refs = extractApiReferences(`const url = '/api/products/list'`);
+    expect(refs.some((r) => r.path === '/api/products/list')).toBe(true);
+  });
+
+  it('should deduplicate same path+method', () => {
+    const code = `
+      axios.get('/api/users');
+      axios.get('/api/users');
+    `;
+    const refs = extractApiReferences(code);
+    const userGets = refs.filter((r) => r.path === '/api/users' && r.method === 'GET');
+    expect(userGets.length).toBe(1);
+  });
+
+  it('should keep different methods for same path', () => {
+    const code = `
+      axios.get('/api/users');
+      axios.post('/api/users');
+    `;
+    const refs = extractApiReferences(code);
+    expect(refs.some((r) => r.path === '/api/users' && r.method === 'GET')).toBe(true);
+    expect(refs.some((r) => r.path === '/api/users' && r.method === 'POST')).toBe(true);
+  });
+});
+
+describe('EXPORTED_METHOD_PATTERN', () => {
+  it('should match export async function GET', () => {
+    EXPORTED_METHOD_PATTERN.lastIndex = 0;
+    const match = EXPORTED_METHOD_PATTERN.exec('export async function GET() {');
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('GET');
+  });
+
+  it('should match export const POST', () => {
+    EXPORTED_METHOD_PATTERN.lastIndex = 0;
+    const match = EXPORTED_METHOD_PATTERN.exec('export const POST = async () => {');
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('POST');
+  });
+
+  it('should match all HTTP methods', () => {
+    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+    for (const method of methods) {
+      EXPORTED_METHOD_PATTERN.lastIndex = 0;
+      const match = EXPORTED_METHOD_PATTERN.exec(`export async function ${method}() {`);
+      expect(match).not.toBeNull();
+      expect(match![1]).toBe(method);
+    }
+  });
+});
+
+describe('NEST_CONTROLLER_PATTERN', () => {
+  it('should match @Controller with path', () => {
+    const match = NEST_CONTROLLER_PATTERN.exec("@Controller('users')");
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('users');
+  });
+
+  it('should match @Controller with empty path', () => {
+    const match = NEST_CONTROLLER_PATTERN.exec('@Controller()');
+    expect(match).not.toBeNull();
+  });
+});
+
+describe('NEST_METHOD_PATTERN', () => {
+  it('should match @Get with path', () => {
+    NEST_METHOD_PATTERN.lastIndex = 0;
+    const match = NEST_METHOD_PATTERN.exec("@Get('profile')");
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('Get');
+    expect(match![2]).toBe('profile');
+  });
+
+  it('should match @Post without path', () => {
+    NEST_METHOD_PATTERN.lastIndex = 0;
+    const match = NEST_METHOD_PATTERN.exec('@Post()');
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('Post');
+  });
+
+  it('should match all NestJS decorators', () => {
+    const decorators = ['Get', 'Post', 'Put', 'Delete', 'Patch', 'Options', 'Head', 'All'];
+    for (const dec of decorators) {
+      NEST_METHOD_PATTERN.lastIndex = 0;
+      const match = NEST_METHOD_PATTERN.exec(`@${dec}()`);
+      expect(match).not.toBeNull();
+      expect(match![1]).toBe(dec);
+    }
+  });
+});
