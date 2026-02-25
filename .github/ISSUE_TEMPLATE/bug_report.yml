@@ -1,0 +1,104 @@
+name: Bug Report
+description: Report a false positive, false negative, crash, or incorrect detection
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the details below so we can reproduce and fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: Pruny version
+      description: Run `pruny --version` or check `package.json`
+      placeholder: "1.33.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Framework
+      description: What framework is the scanned project using?
+      options:
+        - Next.js
+        - NestJS
+        - Both (monorepo)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scanner
+    attributes:
+      label: Scanner / Category
+      description: Which scanner is producing the incorrect result?
+      options:
+        - API Routes
+        - Named Exports
+        - Unused Files
+        - Unused Services (NestJS)
+        - Public Assets
+        - Source Assets
+        - Missing Assets
+        - HTTP Usage
+        - CLI / Config
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bug-type
+    attributes:
+      label: Bug type
+      description: What kind of issue is this?
+      options:
+        - False positive (flagged code that IS used)
+        - False negative (missed code that is NOT used)
+        - Crash / error
+        - Incorrect fix (--fix mode broke something)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect instead?
+      placeholder: |
+        Pruny flagged `POST /api/users` as unused, but it's called via `axios.post('/api/users')` in `components/UserForm.tsx`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or code snippet to reproduce the issue
+      placeholder: |
+        1. Create a route file at `app/api/users/route.ts` with a POST export
+        2. Reference it in a client component with `axios.post('/api/users')`
+        3. Run `pruny --all`
+        4. POST handler is incorrectly flagged as unused
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Config (if applicable)
+      description: Paste your `pruny.config.json` or `.prunyrc` if you have one
+      render: json
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Any additional environment details
+      placeholder: |
+        - OS: macOS 15.3
+        - Runtime: Bun 1.2 / Node 22
+        - Package manager: bun / npm / pnpm

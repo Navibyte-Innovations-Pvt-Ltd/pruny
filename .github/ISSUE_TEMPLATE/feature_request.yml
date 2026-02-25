@@ -1,0 +1,66 @@
+name: Feature Request
+description: Suggest a new scanner, framework support, or CLI improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for pruny? We'd love to hear it.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of pruny does this relate to?
+      options:
+        - New scanner
+        - Existing scanner improvement
+        - Framework support (new framework)
+        - CLI / UX
+        - Config / Ignore rules
+        - Fix mode (--fix)
+        - CI integration
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Framework (if applicable)
+      description: Does this relate to a specific framework?
+      options:
+        - Next.js
+        - NestJS
+        - Both
+        - Framework-agnostic
+        - New framework (specify below)
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What would you like pruny to do?
+      placeholder: |
+        It would be great if pruny could detect unused tRPC procedures...
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Why is this useful? What problem does it solve?
+      placeholder: |
+        In our monorepo we have 200+ tRPC procedures and no way to know which ones are dead code.
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example code (if applicable)
+      description: Show a code snippet that illustrates the gap or desired behavior
+      render: typescript
