@@ -33,7 +33,7 @@ export async function scanPublicAssets(config: Config): Promise<PublicScanResult
   const assetFiles = await fg('**/*', {
     cwd: publicDir,
     onlyFiles: true,
-    ignore: ['**/*.xml', 'robots.txt', 'robots.ts', 'robots.js', 'sw.js', 'sw.ts'],
+    ignore: ['**/*.xml', 'robots.txt', 'robots.ts', 'robots.js', 'sw.js', 'sw.ts', 'llms.txt'],
   });
 
   if (assetFiles.length === 0) {
