@@ -1,7 +1,13 @@
 import fg from 'fast-glob';
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Config } from '../types.js';
+
+// Next.js App Router metadata convention file prefixes
+// These files in app/ are served at root URLs (e.g., app/icon.png → /icon.png)
+const NEXTJS_METADATA_PREFIXES = [
+  'icon', 'apple-icon', 'favicon', 'opengraph-image', 'twitter-image',
+];
 
 export interface MissingAsset {
   path: string;        // The missing path (e.g., "/images/missing.png")
@@ -62,6 +68,18 @@ export async function scanMissingAssets(config: Config): Promise<MissingAssetsRe
         const fullPath = join(publicDir, assetPath.substring(1)); // Remove leading slash for safer join
 
         if (!existsSync(fullPath)) {
+            // Check if this is a Next.js metadata convention file in app/ directory
+            // e.g., /icon0.svg → app/icon0.svg, /apple-icon.png → app/apple-icon.png
+            const fileName = basename(assetPath);
+            const isNextjsMetadata = NEXTJS_METADATA_PREFIXES.some(prefix =>
+              fileName === prefix || fileName.startsWith(`${prefix}.`) || fileName.match(new RegExp(`^${prefix}\\d+\\.`))
+            );
+
+            if (isNextjsMetadata) {
+              const appPath = join(cwd, 'app', fileName);
+              if (existsSync(appPath)) continue;
+            }
+
             // It's missing!
             const assetKey = assetPath;
             if (!missingMap.has(assetKey)) {
