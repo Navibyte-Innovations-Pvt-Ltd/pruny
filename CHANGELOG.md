@@ -1,3 +1,10 @@
+## [1.34.1](https://github.com/webnaresh/pruny/compare/v1.34.0...v1.34.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* Adjust package configuration to point `pruny` binary to `dist/index.js` and remove `bin` from published files. ([9e3910d](https://github.com/webnaresh/pruny/commit/9e3910db9bfda3090e23656d3123295259bba34b))
+
 # [1.34.0](https://github.com/webnaresh/pruny/compare/v1.33.1...v1.34.0) (2026-02-25)
 
 
