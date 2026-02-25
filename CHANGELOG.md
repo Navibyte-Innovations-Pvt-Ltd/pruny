@@ -1,3 +1,10 @@
+# [1.35.0](https://github.com/webnaresh/pruny/compare/v1.34.1...v1.35.0) (2026-02-25)
+
+
+### Features
+
+* add test script and include bun test in validate pipeline ([6eb2ac4](https://github.com/webnaresh/pruny/commit/6eb2ac43ed209e1e6a633c877a8cc5d3b4afd5f6))
+
 ## [1.34.1](https://github.com/webnaresh/pruny/compare/v1.34.0...v1.34.1) (2026-02-25)
 
 
