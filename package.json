@@ -19,7 +19,8 @@
     "audit": "bun run build && node dist/index.js",
     "prepublishOnly": "bun run build",
     "prepare": "bun run build",
-    "validate": "bun run lint && npx tsc --noEmit"
+    "test": "bun test",
+    "validate": "bun run lint && npx tsc --noEmit && bun test"
   },
   "keywords": [
     "unused",
