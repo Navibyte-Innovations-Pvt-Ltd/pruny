@@ -42,7 +42,7 @@ jobs:
         if: github.event_name == 'push'
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # --- GitHub Packages Publishing ---
