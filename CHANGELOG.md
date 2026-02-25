@@ -1,3 +1,10 @@
+## [1.33.1](https://github.com/webnaresh/pruny/compare/v1.33.0...v1.33.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* skip all Next.js metadata convention files in missing assets scanner ([f9aaf97](https://github.com/webnaresh/pruny/commit/f9aaf97208680dcc9d7bcaa1214f99b1f9678eaa))
+
 # [1.33.0](https://github.com/webnaresh/pruny/compare/v1.32.0...v1.33.0) (2026-02-25)
 
 
