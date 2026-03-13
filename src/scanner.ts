@@ -18,8 +18,9 @@ import { scanHttpUsage } from './scanners/http-usage.js';
 import { scanSourceAssets } from './scanners/source-assets.js';
 import { scanMissingAssets } from './scanners/missing-assets.js';
 import { scanUnusedServices } from './scanners/unused-services.js';
+import { scanBrokenLinks } from './scanners/broken-links.js';
 
-export { scanUnusedExports, scanUnusedFiles, scanHttpUsage, scanSourceAssets, scanMissingAssets, scanUnusedServices };
+export { scanUnusedExports, scanUnusedFiles, scanHttpUsage, scanSourceAssets, scanMissingAssets, scanUnusedServices, scanBrokenLinks };
 
 /**
  * Extract route path from file path
@@ -564,6 +565,7 @@ export async function scan(config: Config): Promise<ScanResult> {
     routes,
     publicAssets,
     missingAssets: await scanMissingAssets(config),
+    brokenLinks: await scanBrokenLinks(config),
     unusedFiles,
     unusedExports: await scanUnusedExports(config).then(result => {
       // Filter out controller file exports — these are route handlers, not standard exports.
