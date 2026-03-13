@@ -2,6 +2,7 @@ export interface IgnoreConfig {
   routes: string[];
   folders: string[];
   files: string[];
+  links: string[];
 }
 
 export interface Config {
