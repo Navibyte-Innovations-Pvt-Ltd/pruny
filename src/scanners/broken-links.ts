@@ -125,6 +125,8 @@ function filePathToRoute(filePath: string): string {
 /**
  * Check if a referenced path matches any known route.
  * Handles dynamic segments [slug] and catch-all [...slug].
+ * Also handles multi-tenant/subdomain routing where links like /view_seat
+ * resolve under dynamic parent routes like /tenant/[domain]/view_seat.
  */
 function matchesRoute(refPath: string, routes: Set<string>, routeSegments: string[][]): boolean {
   const cleaned = cleanPath(refPath);
@@ -137,9 +139,34 @@ function matchesRoute(refPath: string, routes: Set<string>, routeSegments: strin
 
   for (const routeSeg of routeSegments) {
     if (matchSegments(refSegments, routeSeg)) return true;
+
+    // Multi-tenant/subdomain routing: a link like /view_seat may resolve to
+    // /tenant_sites/[domain]/view_seat at runtime via middleware/subdomain routing.
+    // Check if the link path matches the tail of a dynamic route.
+    if (matchesDynamicSuffix(refSegments, routeSeg)) return true;
   }
 
   return false;
+}
+
+/**
+ * Check if refSegments match the tail of a route whose skipped prefix
+ * consists only of static segments and dynamic segments (e.g., tenant/[domain]).
+ * This handles multi-tenant subdomain routing where /view_seat is actually
+ * /tenant_sites/[domain]/view_seat in the file system.
+ */
+function matchesDynamicSuffix(refSegments: string[], routeSegments: string[]): boolean {
+  if (refSegments.length >= routeSegments.length) return false;
+
+  // The prefix we'd skip must contain at least one dynamic segment
+  const prefixLen = routeSegments.length - refSegments.length;
+  const prefix = routeSegments.slice(0, prefixLen);
+
+  if (!prefix.some(s => /^\[.+\]$/.test(s))) return false;
+
+  // The tail must match exactly
+  const tail = routeSegments.slice(prefixLen);
+  return matchSegments(refSegments, tail);
 }
 
 /**
@@ -250,8 +277,12 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
           // Check if route exists
           if (!matchesRoute(cleaned, knownRoutes, routeSegmentsList)) {
-            // Check ignore patterns
-            const isIgnored = config.ignore.routes.some(ignorePath => {
+            // Check ignore.links patterns (dedicated), falling back to ignore.routes for compat
+            const ignorePatterns = [
+              ...(config.ignore.links || []),
+              ...config.ignore.routes,
+            ];
+            const isIgnored = ignorePatterns.some(ignorePath => {
               const pattern = ignorePath.replace(/\*/g, '.*');
               return new RegExp(`^${pattern}$`).test(cleaned);
             });

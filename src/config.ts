@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: Config = {
       '**/coverage/**',
     ],
     files: [],
+    links: [],
   },
   extensions: ['.ts', '.tsx', '.js', '.jsx'],
   nestGlobalPrefix: '',
@@ -59,6 +60,7 @@ export function loadConfig(options: CLIOptions): Config {
     routes: [...(DEFAULT_CONFIG.ignore.routes || [])],
     folders: [...(DEFAULT_CONFIG.ignore.folders || [])],
     files: [...(DEFAULT_CONFIG.ignore.files || [])],
+    links: [...(DEFAULT_CONFIG.ignore.links || [])],
   };
   
   let mergedExtensions = [...DEFAULT_CONFIG.extensions];
@@ -83,6 +85,7 @@ export function loadConfig(options: CLIOptions): Config {
       if (config.ignore?.routes) mergedIgnore.routes.push(...config.ignore.routes);
       if (config.ignore?.folders) mergedIgnore.folders.push(...config.ignore.folders.map(prefixPattern));
       if (config.ignore?.files) mergedIgnore.files.push(...config.ignore.files.map(prefixPattern));
+      if (config.ignore?.links) mergedIgnore.links.push(...config.ignore.links);
       
       if (config.extensions) mergedExtensions = [...new Set([...mergedExtensions, ...config.extensions])];
       if (config.nestGlobalPrefix) nestGlobalPrefix = config.nestGlobalPrefix;
@@ -104,6 +107,7 @@ export function loadConfig(options: CLIOptions): Config {
   mergedIgnore.routes = [...new Set(mergedIgnore.routes)];
   mergedIgnore.folders = [...new Set(mergedIgnore.folders)];
   mergedIgnore.files = [...new Set(mergedIgnore.files)];
+  mergedIgnore.links = [...new Set(mergedIgnore.links)];
 
   return {
     dir: cwd,

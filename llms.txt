@@ -1,13 +1,21 @@
 # Pruny
 
-> Find and remove unused Next.js API routes.
+> Find and remove unused code in Next.js and NestJS projects.
 
 ## Summary
-Pruny is a CLI tool that scans Next.js projects (App Router) to identify:
-1. **Unused API Routes**: Endpoints not referenced in the codebase.
-2. **Unused Public Assets**: Images and files in `public/` that are never used.
 
-It supports auto-detection of usage via `fetch`, `axios`, `useSWR`, and respects `vercel.json` cron jobs.
+Pruny is a TypeScript CLI tool that uses regex-based static analysis to detect and remove unused code. It scans for:
+
+1. **Unused API Routes** - Next.js `route.ts` handlers and NestJS controller methods not referenced anywhere
+2. **Broken Internal Links** - `<Link>`, `router.push()`, `redirect()` pointing to pages that don't exist
+3. **Unused Exports** - Named exports and class methods not imported by other files
+4. **Unused Files** - Source files not reachable from any entry point (graph-based analysis)
+5. **Unused Services** - NestJS service methods not called by controllers or other services
+6. **Public Assets** - Images/files in `public/` not referenced in code
+7. **Source Assets** - Media files in source directories not referenced in code
+8. **Missing Assets** - Code references to files in `public/` that don't exist
+
+It supports monorepos (auto-detects `apps/` directory), NestJS and Next.js (App Router + Pages Router), and multi-tenant/subdomain routing architectures.
 
 ## Installation
 
@@ -19,78 +27,103 @@ npx pruny
 
 ## Usage
 
-### Scan Mode
-Scans the current directory or specified directory for unused routes.
+### Interactive Mode
 ```bash
-npx pruny
-npx pruny --dir ./src
+npx pruny              # Scan interactively (auto-detects monorepo)
+npx pruny --app web    # Scan a specific app in a monorepo
 ```
 
-### Fix Mode (Deletion)
-Automatically deletes the folders of unused API routes.
+### CI Mode
 ```bash
-npx pruny --fix
+npx pruny --all        # Scan all apps, exit 1 if issues found
 ```
 
-### JSON Output
-Outputs the results in JSON format for program consumption.
+### Fix Mode
 ```bash
-npx pruny --json
+npx pruny --fix        # Interactively delete unused items
+npx pruny --dry-run    # Simulate and output JSON report
+```
+
+### Other Flags
+```bash
+npx pruny --dir ./src              # Scan specific directory
+npx pruny --folder src/api         # Scan specific folder
+npx pruny --cleanup routes,exports # Quick targeted cleanup
+npx pruny --filter "users"         # Filter results by pattern
+npx pruny --ignore-apps admin,docs # Skip specific apps
+npx pruny --no-public              # Skip public asset scanning
+npx pruny --json                   # JSON output
+npx pruny -v                       # Verbose debug logging
+npx pruny init                     # Generate pruny.config.json
 ```
 
 ## Configuration
-Pruny looks for `pruny.config.json` in the project root.
+
+Pruny looks for `pruny.config.json`, `.prunyrc.json`, or `.prunyrc` in your project. Run `pruny init` to generate one.
 
 ```json
 {
-  "dir": "./",
   "ignore": {
     "routes": ["/api/webhooks/**", "/api/cron/**"],
     "folders": ["node_modules", ".next", "dist", ".git"],
-    "files": ["*.test.ts", "*.spec.ts"]
+    "files": ["*.test.ts", "*.spec.ts"],
+    "links": ["/custom-path", "/legacy/*"]
   },
-  "extensions": [".ts", ".tsx", ".js", ".jsx"]
+  "extensions": [".ts", ".tsx", ".js", ".jsx"],
+  "nestGlobalPrefix": "",
+  "extraRoutePatterns": []
 }
 ```
 
-## Advanced Usage & Limitations
+### Ignore Options
 
-### Dynamic Routes & Custom Clients
-Pruny detects API usage by static analysis of string literals.
-- **Supported**:
-  - `fetch('/api/users')`
-  - `` fetch(`/api/users/${id}`) `` (Template literals with constant prefix)
-  - `axios.get('/api/items')`
-  - `useSWR('/api/data')`
-- **Limitations**:
-  - **Runtime Construction**: Routes constructed purely at runtime without a static `/api/` prefix literal cannot be detected.
-    - ❌ `fetch(myUrlVariable)` -> **False Positive** (Pruny thinks route is unused)
-    - ✅ `fetch('/api/' + myUrlVariable)` -> **Detected**
-  - **Custom Wrappers**: If you wrap `fetch` in a custom `apiClient` without standard method names, use `// pruny-ignore` (future feature) or manually ignore the route in config.
+- **`ignore.routes`** - Glob patterns for API routes to skip (e.g., webhook endpoints, cron handlers)
+- **`ignore.folders`** - Directories to exclude from all scanning
+- **`ignore.files`** - File patterns to exclude from scanning
+- **`ignore.links`** - Suppress broken link warnings for specific paths. Useful for:
+  - Multi-tenant apps where routes resolve via subdomain/middleware at runtime
+  - External redirect paths handled by reverse proxy
+  - Routes that exist but are not file-system based
 
-### Monorepo / Multi-App Setup
-For monorepos with multiple Next.js apps (e.g., `apps/web`, `apps/admin`):
+All patterns support glob syntax (`*` matches any, `**` matches nested paths).
 
-1. **Run per package**:
-   ```bash
-   cd apps/web && npx pruny
-   ```
-2. **Run from root with --dir**:
-   ```bash
-   # Scan specific app
-   npx pruny --dir ./apps/web
-   
-   # Scan another app
-   npx pruny --dir ./apps/admin
-   ```
-   *Note: Pruny's config resolution looks for `pruny.config.json` in the specific `dir` being scanned.*
+### Multi-Tenant / Subdomain Routing
 
-### Vercel Cron Detection
-Pruny automatically parses `vercel.json` to process cron jobs.
-- It looks for `crons: [{ path: "/api/cron/job" }]` array.
-- Any route path found in `vercel.json` is automatically marked as **USED**.
-- This prevents accidental deletion of server-side cron handlers that are never "fetched" by client code.
+Pruny automatically recognizes routes under dynamic segments. For example, if `/view_seat` resolves at runtime via `app/tenant/[domain]/view_seat/page.tsx`, Pruny will not report it as broken.
+
+For edge cases not covered by auto-detection, use `ignore.links`:
+```json
+{
+  "ignore": {
+    "links": ["/view_seat", "/review"]
+  }
+}
+```
+
+### Monorepo Support
+
+Pruny auto-detects monorepos by looking for an `apps/` directory. It scans routes within each app but checks references across the full monorepo root.
+
+Config files from multiple apps are discovered and merged. CLI `--config` takes precedence.
+
+## How It Works
+
+1. **Regex-based analysis** - All detection uses regex patterns (not AST parsing) for speed
+2. **Route detection** - Finds `app/api/**/route.ts` (Next.js) and `*.controller.ts` (NestJS)
+3. **Link validation** - Matches `<Link href>`, `router.push()`, `redirect()`, `href:`, `revalidatePath()`, `pathname ===` against known page routes
+4. **Dynamic segments** - Understands `[id]`, `[...slug]`, `[[...slug]]` patterns
+5. **Graph-based file reachability** - Traces imports from entry points to find orphaned files
+6. **Worker threads** - Splits export scanning across 2 threads for large projects (500+ files)
+7. **Cascading deletion** - Fix mode runs a second pass after deletions to catch newly dead code
+8. **Vercel cron detection** - Routes in `vercel.json` cron jobs are automatically marked as used
+
+## Debug Mode
+
+```bash
+DEBUG_PRUNY=1 pruny
+```
 
 ## Source Code
+
 - Repository: https://github.com/WebNaresh/pruny
 - Registry: https://www.npmjs.com/package/pruny
