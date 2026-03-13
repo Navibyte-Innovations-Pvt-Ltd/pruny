@@ -1,3 +1,16 @@
+# [1.38.0](https://github.com/webnaresh/pruny/compare/v1.37.0...v1.38.0) (2026-03-13)
+
+
+### Bug Fixes
+
+* **scanner:** resolve false positive broken links for multi-tenant subdomain routes ([60786f2](https://github.com/webnaresh/pruny/commit/60786f240cb098dcd82244972f5b722c9069124a))
+
+
+### Features
+
+* **config:** load, merge, and deduplicate ignore.links from config files ([8f43e11](https://github.com/webnaresh/pruny/commit/8f43e117090d0731e4ec495e56c6e77339f24e86))
+* **types:** add links array to IgnoreConfig for broken link suppression ([877982a](https://github.com/webnaresh/pruny/commit/877982ab280439a1dcfccf39510e9905601f4454))
+
 # [1.37.0](https://github.com/webnaresh/pruny/compare/v1.36.1...v1.37.0) (2026-03-13)
 
 
