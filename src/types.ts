@@ -85,6 +85,10 @@ export interface ScanResult {
     total: number;
     assets: MissingAsset[];
   };
+  brokenLinks?: {
+    total: number;
+    links: BrokenLink[];
+  };
   unusedFiles?: {
     total: number;
     used: number;
@@ -110,6 +114,11 @@ export interface ScanResult {
 }
 
 export interface MissingAsset {
+  path: string;
+  references: string[];
+}
+
+export interface BrokenLink {
   path: string;
   references: string[];
 }
