@@ -351,6 +351,12 @@ function filterResults(result: ScanResult, filterPattern: string) {
     result.unusedExports.unused = result.unusedExports.exports.length;
   }
 
+  // Filter Broken Links
+  if (result.brokenLinks) {
+    result.brokenLinks.links = result.brokenLinks.links.filter(l => matchesFilter(l.path, filter));
+    result.brokenLinks.total = result.brokenLinks.links.length;
+  }
+
   // Recalculate main stats
   result.total = result.routes.length;
   result.used = result.routes.filter(r => r.used).length;
@@ -440,6 +446,18 @@ function printDetailedReport(result: ScanResult) {
     console.log('');
   }
 
+  // 8. Broken Internal Links
+  if (result.brokenLinks && result.brokenLinks.total > 0) {
+    console.log(chalk.red.bold('🔗 Broken Internal Links:\n'));
+    for (const link of result.brokenLinks.links) {
+      console.log(chalk.red(`   ${link.path}`));
+      for (const ref of link.references) {
+        console.log(chalk.dim(`      → ${ref}`));
+      }
+    }
+    console.log('');
+  }
+
   if (!hasUnusedItems(result)) {
     console.log(chalk.green('✅ Everything is used! Clean as a whistle.\n'));
   }
@@ -457,11 +475,12 @@ function countIssues(result: ScanResult): number {
   const partialRoutes = result.routes.filter(r => r.used && r.unusedMethods.length > 0).length;
   const unusedAssets = result.publicAssets ? result.publicAssets.unused : 0;
   const missingAssets = result.missingAssets ? result.missingAssets.total : 0;
+  const brokenLinks = result.brokenLinks ? result.brokenLinks.total : 0;
   const unusedFiles = result.unusedFiles ? result.unusedFiles.unused : 0;
   const unusedExports = result.unusedExports ? result.unusedExports.unused : 0;
   const unusedServices = result.unusedServices ? result.unusedServices.total : 0;
 
-  return unusedRoutes + partialRoutes + unusedAssets + missingAssets + unusedFiles + unusedExports + unusedServices;
+  return unusedRoutes + partialRoutes + unusedAssets + missingAssets + brokenLinks + unusedFiles + unusedExports + unusedServices;
 }
 
 /**
@@ -576,6 +595,15 @@ async function handleFixes(result: ScanResult, config: Config, options: PrunyOpt
     choices.push({ title, value: 'missing-assets' });
   }
 
+  // g) Broken Internal Links
+  if (result.brokenLinks) {
+    const count = result.brokenLinks.total;
+    const title = count > 0
+      ? `🔗 Broken Internal Links (${count})`
+      : `✅ Internal Links (0) - All good!`;
+    choices.push({ title, value: 'broken-links' });
+  }
+
 
   if (showBack) {
     choices.push({ title: chalk.cyan('← Back'), value: 'back' });
@@ -683,13 +711,14 @@ async function handleFixes(result: ScanResult, config: Config, options: PrunyOpt
       targetRoutes = result.routes.filter(r => !r.used || (r.used && r.unusedMethods?.length > 0));
     }
 
-    const dryRunReport: { uniqueFiles: number; routes: unknown[]; exports: unknown[]; files: unknown[]; assets: unknown[]; missingAssets: unknown[] } = {
+    const dryRunReport: { uniqueFiles: number; routes: unknown[]; exports: unknown[]; files: unknown[]; assets: unknown[]; missingAssets: unknown[]; brokenLinks: unknown[] } = {
       uniqueFiles: new Set(targetRoutes.map(r => r.filePath)).size,
       routes: [],
       exports: [],
       files: [],
       assets: [],
-      missingAssets: []
+      missingAssets: [],
+      brokenLinks: []
     };
 
     if (selected === 'routes' || selected === 'dry-run-json' || action === 'dry-run') {
@@ -768,6 +797,15 @@ async function handleFixes(result: ScanResult, config: Config, options: PrunyOpt
       dryRunReport.uniqueFiles = missingList.length;
     }
 
+    if (selected === 'broken-links') {
+      const brokenList = result.brokenLinks?.links || [];
+      dryRunReport.brokenLinks = brokenList.map(l => ({
+        path: l.path,
+        references: l.references
+      }));
+      dryRunReport.uniqueFiles = brokenList.length;
+    }
+
     const reportPath = join(process.cwd(), 'pruny-dry-run.json');
     writeFileSync(reportPath, JSON.stringify(dryRunReport, null, 2));
     console.log(chalk.green(`\n✅ Dry run report saved to: ${chalk.bold(reportPath)}`));
@@ -783,6 +821,24 @@ async function handleFixes(result: ScanResult, config: Config, options: PrunyOpt
   let fixedSomething = false;
 
   // --- 3. Execute Selected Cleanups ---
+
+  // 3y. Broken Internal Links
+  if (selectedList.includes('broken-links')) {
+    if (result.brokenLinks && result.brokenLinks.total > 0) {
+      console.log(chalk.yellow.bold('\n🔗 Broken Internal Links Detected:'));
+      console.log(chalk.gray('   (These links point to pages that don\'t exist. Please fix or remove them:)'));
+
+      for (const link of result.brokenLinks.links) {
+        console.log(chalk.red.bold(`\n   ❌ ${link.path}`));
+        for (const ref of link.references) {
+          console.log(chalk.gray(`      ➜ ${ref}`));
+        }
+      }
+      console.log(chalk.yellow('\n   Create the missing pages or update the links to valid routes.'));
+    } else {
+      console.log(chalk.green('\n✅ No broken internal links found! All links are valid.'));
+    }
+  }
 
   // 3x. Missing Assets
   if (selectedList.includes('missing-assets')) {
@@ -1241,6 +1297,16 @@ function printSummaryTable(result: ScanResult, context: string) {
     });
   }
 
+  // Broken internal links — only show when there are actual issues
+  if (result.brokenLinks && result.brokenLinks.total > 0) {
+    summary.push({
+      Category: chalk.red.bold('🔗 Broken Links'),
+      Total: result.brokenLinks.total,
+      Used: '-',
+      Unused: result.brokenLinks.total
+    });
+  }
+
   if (result.unusedFiles) summary.push({ Category: 'Code Files (.ts/.js)', Total: result.unusedFiles.used + result.unusedFiles.unused, Used: result.unusedFiles.used, Unused: result.unusedFiles.unused });
   if (result.unusedExports) summary.push({ Category: 'Named Exports', Total: result.unusedExports.used + result.unusedExports.unused, Used: result.unusedExports.used, Unused: result.unusedExports.unused });
 
@@ -1277,6 +1343,18 @@ function printSummaryTable(result: ScanResult, context: string) {
       }
     }
     console.log(chalk.yellow('\n   These files are referenced in code but don\'t exist. Update the links or create the files.'));
+  }
+
+  // Show broken internal links details inline
+  if (result.brokenLinks && result.brokenLinks.total > 0) {
+    console.log(chalk.red.bold('\n🔗 Broken Internal Links:\n'));
+    for (const link of result.brokenLinks.links) {
+      console.log(chalk.red(`   ✗ ${link.path}`));
+      for (const ref of link.references) {
+        console.log(chalk.dim(`     → ${ref}`));
+      }
+    }
+    console.log(chalk.yellow('\n   These links point to pages/routes that don\'t exist. Create the pages or fix the links.'));
   }
 }
 
