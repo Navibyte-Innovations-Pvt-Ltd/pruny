@@ -1,3 +1,20 @@
+# [1.39.0](https://github.com/webnaresh/pruny/compare/v1.38.0...v1.39.0) (2026-03-15)
+
+
+### Bug Fixes
+
+* **constants:** sync DEFAULT_IGNORE with config defaults, add out, .cache, .vercel, .husky, .swc, storybook-static ([a52c653](https://github.com/webnaresh/pruny/commit/a52c653385c42da41cefa5ea1ff452e785cf994f))
+
+
+### Features
+
+* **config:** add .turbo, .cache, .vercel, .husky, .swc, generated, storybook-static to default ignored folders ([0af80d7](https://github.com/webnaresh/pruny/commit/0af80d7bb0dc7b2163da3942cc5d004ce0ca955f))
+* **scanner:** auto-detect external routes from vercel.json rewrites/redirects and package.json deps (next-auth, inngest) ([242315b](https://github.com/webnaresh/pruny/commit/242315bad8008ca3cd7be70d1482da982d437608))
+* **types:** expand VercelConfig with rewrites and redirects interfaces ([2a4b74a](https://github.com/webnaresh/pruny/commit/2a4b74a9071061ea9386ade666b2be4b79b65a68))
+* **unused-files:** add mdx-components.tsx as Next.js convention entry point ([1c681f7](https://github.com/webnaresh/pruny/commit/1c681f798fa7e1d013f4d8d4aaac9ed9c652a270))
+* **unused-files:** use tsconfig paths for import resolution, add storybook/seed/prisma entry points ([95868d8](https://github.com/webnaresh/pruny/commit/95868d8129ffc0089f000f2c87a90b8166486e70))
+* **utils:** add parseTsConfigPaths for tsconfig.json path alias resolution in unused-files scanner ([c7f097b](https://github.com/webnaresh/pruny/commit/c7f097bae570f090f0c384c465f67a590981eee8))
+
 # [1.38.0](https://github.com/webnaresh/pruny/compare/v1.37.0...v1.38.0) (2026-03-13)
 
 
