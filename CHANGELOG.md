@@ -1,3 +1,10 @@
+# [1.40.0](https://github.com/webnaresh/pruny/compare/v1.39.1...v1.40.0) (2026-03-15)
+
+
+### Features
+
+* **scanner:** detect API routes referenced in GitHub Actions workflow files ([8c61f97](https://github.com/webnaresh/pruny/commit/8c61f9784be8b6b8759b05bef7a84cbf6ee2063e))
+
 ## [1.39.1](https://github.com/webnaresh/pruny/compare/v1.39.0...v1.39.1) (2026-03-15)
 
 
