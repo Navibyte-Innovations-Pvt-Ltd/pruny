@@ -1,3 +1,10 @@
+## [1.39.1](https://github.com/webnaresh/pruny/compare/v1.39.0...v1.39.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **scanner:** use app-specific dir for vercel.json lookup and include dot-directories in source scan ([1b12a90](https://github.com/webnaresh/pruny/commit/1b12a90e2e83dd7cae0c4dcaeebdc08d68060f46))
+
 # [1.39.0](https://github.com/webnaresh/pruny/compare/v1.38.0...v1.39.0) (2026-03-15)
 
 
