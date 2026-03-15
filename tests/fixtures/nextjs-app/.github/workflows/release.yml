@@ -1,0 +1,17 @@
+name: Release
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notify changelog
+        run: |
+          curl -X POST "$SITE_URL/api/health" \
+            -H "Authorization: Bearer $TOKEN"
+      - name: Fetch users
+        run: |
+          curl -sf "$APP_URL/api/users" -o /dev/null

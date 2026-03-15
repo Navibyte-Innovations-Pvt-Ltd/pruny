@@ -398,6 +398,46 @@ function getVercelExternalPaths(dir: string): string[] {
 }
 
 /**
+ * Scan GitHub Actions workflow files for API route references
+ * Detects curl commands, fetch calls, and URL strings in .github/workflows/*.yml
+ */
+function getGitHubWorkflowPaths(dir: string): string[] {
+  const workflowDir = join(dir, '.github', 'workflows');
+  if (!existsSync(workflowDir)) return [];
+
+  const paths: string[] = [];
+
+  // Pattern to extract /api/... paths from workflow content
+  // Matches: curl .../api/foo, fetch(".../api/foo"), "$URL/api/foo", '/api/foo', etc.
+  const apiPathPattern = /\/api\/[a-zA-Z0-9_\-/[\]]+/g;
+
+  try {
+    const files = fg.sync('*.{yml,yaml}', { cwd: workflowDir });
+    for (const file of files) {
+      const content = readFileSync(join(workflowDir, file), 'utf-8');
+      let match;
+      apiPathPattern.lastIndex = 0;
+      while ((match = apiPathPattern.exec(content)) !== null) {
+        const apiPath = match[0]
+          .replace(/['"`)\s,;]+$/, '')  // Strip trailing quotes/parens/punctuation
+          .replace(/\/$/, '');           // Strip trailing slash
+        if (apiPath && !paths.includes(apiPath)) {
+          paths.push(apiPath);
+        }
+      }
+    }
+  } catch {
+    // Ignore errors reading workflow files
+  }
+
+  if (process.env.DEBUG_PRUNY && paths.length > 0) {
+    console.log(`[DEBUG] GitHub workflow API paths: ${paths.join(', ')}`);
+  }
+
+  return paths;
+}
+
+/**
  * Auto-detect routes that are externally invoked based on project dependencies
  */
 function getAutoDetectedExternalRoutes(dir: string): string[] {
@@ -526,6 +566,25 @@ export async function scan(config: Config): Promise<ScanResult> {
       route.used = true;
       route.references.push('vercel.json');
       route.unusedMethods = [];
+    }
+  }
+
+  // 3.25 Mark GitHub Actions workflow routes as used
+  // Check both the app dir and the root dir (monorepo: workflows live at repo root)
+  const ghWorkflowDirs = config.appSpecificScan
+    ? [config.appSpecificScan.appDir, config.appSpecificScan.rootDir]
+    : [cwd];
+  const ghWorkflowPaths = [...new Set(ghWorkflowDirs.flatMap(d => getGitHubWorkflowPaths(d)))];
+  for (const extPath of ghWorkflowPaths) {
+    const normalizedExt = extPath.toLowerCase().replace(/\/$/, '');
+    for (const route of routes) {
+      if (route.used) continue;
+      const normalizedRoute = route.path.toLowerCase().replace(/\/$/, '');
+      if (normalizedRoute === normalizedExt || minimatch(normalizedRoute, normalizedExt)) {
+        route.used = true;
+        route.references.push('.github/workflows');
+        route.unusedMethods = [];
+      }
     }
   }
 

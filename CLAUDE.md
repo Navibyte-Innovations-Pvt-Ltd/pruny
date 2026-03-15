@@ -60,6 +60,16 @@ Each scanner is a standalone module called by `scanner.ts`:
 - **Multi-tenant route matching**: The broken links scanner uses `matchesDynamicSuffix()` to recognize that `/view_seat` is valid when a route like `/tenant/[domain]/view_seat` exists. Users can also manually suppress false positives via `ignore.links` in config.
 - **Config `ignore.links`**: Separate from `ignore.routes` — `routes` is for API endpoints, `links` is for page-level broken link suppression. Both are checked when filtering broken links (backward compatible).
 
+## Bug Fix Testing Rule
+
+Every bug fix MUST include a regression test. When fixing a GitHub issue:
+1. Write a test in `tests/` that reproduces the exact bug scenario described in the issue
+2. Add edge-case tests (different file formats, missing directories, multiple matches, no matches)
+3. The test must fail without the fix and pass with it
+4. Run `bun run validate` to confirm all tests pass before considering the fix complete
+
+This prevents the same bug from resurfacing in future releases.
+
 ## Debug Mode
 
 Set `DEBUG_PRUNY=1` to enable verbose logging across all modules.
