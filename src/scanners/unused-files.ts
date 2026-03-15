@@ -60,6 +60,7 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     '**/opengraph-image.{ts,tsx,js,jsx}',
     '**/twitter-image.{ts,tsx,js,jsx}',
     '**/global-error.{ts,tsx,js,jsx}',
+    '**/mdx-components.{ts,tsx,js,jsx}', // Next.js MDX convention
     '**/next-sitemap.config.{js,cjs}',
     '**/cypress.config.{ts,js}',
     '**/env.d.ts',
