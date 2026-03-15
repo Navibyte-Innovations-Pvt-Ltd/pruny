@@ -69,7 +69,9 @@ export const GENERIC_METHOD_NAMES = new Set([
 /** Default glob ignore patterns for scanning */
 export const DEFAULT_IGNORE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/coverage/**',
-  '**/.git/**', '**/.next/**', '**/.turbo/**', '**/generated/**'
+  '**/.git/**', '**/.next/**', '**/out/**', '**/.turbo/**', '**/.cache/**',
+  '**/.vercel/**', '**/.husky/**', '**/.swc/**', '**/generated/**',
+  '**/storybook-static/**',
 ];
 
 /** Regex to match class method declarations (stateful — use createClassMethodRegex() for fresh instances) */

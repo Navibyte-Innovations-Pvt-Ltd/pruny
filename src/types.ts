@@ -162,4 +162,6 @@ export interface PrunyOptions {
 
 export interface VercelConfig {
   crons?: Array<{ path: string; schedule: string }>;
+  rewrites?: Array<{ source: string; destination: string }>;
+  redirects?: Array<{ source: string; destination: string; statusCode?: number }>;
 }

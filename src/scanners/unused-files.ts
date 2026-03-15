@@ -3,6 +3,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import type { Config, UnusedFile } from '../types.js';
 import { minimatch } from 'minimatch';
+import { parseTsConfigPaths } from '../utils.js';
 
 /**
  * Scan for unused source files (.ts, .tsx, .js, .jsx)
@@ -59,6 +60,7 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     '**/opengraph-image.{ts,tsx,js,jsx}',
     '**/twitter-image.{ts,tsx,js,jsx}',
     '**/global-error.{ts,tsx,js,jsx}',
+    '**/mdx-components.{ts,tsx,js,jsx}', // Next.js MDX convention
     '**/next-sitemap.config.{js,cjs}',
     '**/cypress.config.{ts,js}',
     '**/env.d.ts',
@@ -78,6 +80,17 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     // Serverless/Lambda entry points (invoked by runtime, not imported by other code)
     '**/*lambda*/**/{index,handler}.{ts,js}',
     '**/*function*/**/{index,handler}.{ts,js}',
+    // Storybook stories (entry points for Storybook)
+    '**/*.stories.{ts,tsx,js,jsx}',
+    // Test setup files
+    '**/jest.setup.{ts,js}',
+    '**/vitest.setup.{ts,js}',
+    '**/setup-tests.{ts,js}',
+    // Database seeds
+    '**/seed.{ts,js}',
+    '**/seeds/**/*.{ts,js}',
+    // Prisma schema and generated
+    '**/prisma/**/*.{ts,js}',
   ];
 
   // If the search directory itself is a Lambda/serverless app, add root entry patterns
@@ -95,7 +108,17 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     if (isEntry) entryFiles.add(file);
   }
 
-  // 3. Track usage by resolving imports
+  // 3. Parse tsconfig.json paths for alias resolution
+  const aliasMap = parseTsConfigPaths(searchDir);
+
+  if (process.env.DEBUG_PRUNY && aliasMap.size > 0) {
+    console.log(`[DEBUG] Loaded ${aliasMap.size} path aliases from tsconfig.json`);
+    for (const [prefix, targets] of aliasMap) {
+      console.log(`[DEBUG]   ${prefix}* → ${targets.join(', ')}`);
+    }
+  }
+
+  // 4. Track usage by resolving imports
   const usedFiles = new Set<string>(entryFiles);
   const queue = Array.from(entryFiles);
   const visited = new Set<string>(entryFiles);
@@ -109,14 +132,10 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
 
     try {
       const content = readFileSync(currentFile, 'utf-8');
-      
-      // normalize content to handle multiline imports better if needed, 
-      // but standard regex `\s+` matches newlines, so we are good.
-      // However, let's make sure we catch everything.
-      
+
       let match;
       importRegex.lastIndex = 0;
-      
+
       while ((match = importRegex.exec(content)) !== null) {
         const imp = match[1] || match[2] || match[3];
         if (!imp) continue;
@@ -126,10 +145,25 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
         if (imp.startsWith('.')) {
           // Resolve relative to current file
           resolvedFile = resolveImportAbsolute(currentDir, imp, extensions);
-        } else if (imp.startsWith('@/') || imp.startsWith('~/')) {
-          const aliasPath = imp.substring(2);
-          resolvedFile = resolveImportAbsolute(searchDir, aliasPath, extensions) ||
-                         resolveImportAbsolute(join(searchDir, 'src'), aliasPath, extensions);
+        } else {
+          // Try tsconfig path aliases first
+          for (const [prefix, targets] of aliasMap) {
+            if (imp.startsWith(prefix)) {
+              const remainder = imp.substring(prefix.length);
+              for (const target of targets) {
+                resolvedFile = resolveImportAbsolute(target, remainder, extensions);
+                if (resolvedFile) break;
+              }
+              if (resolvedFile) break;
+            }
+          }
+
+          // Fallback: hardcoded @/ and ~/ for projects without tsconfig paths
+          if (!resolvedFile && (imp.startsWith('@/') || imp.startsWith('~/'))) {
+            const aliasPath = imp.substring(2);
+            resolvedFile = resolveImportAbsolute(searchDir, aliasPath, extensions) ||
+                           resolveImportAbsolute(join(searchDir, 'src'), aliasPath, extensions);
+          }
         }
 
         if (resolvedFile && allFilesSet.has(resolvedFile) && !visited.has(resolvedFile)) {
