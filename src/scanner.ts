@@ -518,7 +518,8 @@ export async function scan(config: Config): Promise<ScanResult> {
   }
 
   // 3. Mark vercel external routes as used
-  const vercelPaths = getVercelExternalPaths(cwd);
+  const vercelDir = config.appSpecificScan ? config.appSpecificScan.appDir : cwd;
+  const vercelPaths = getVercelExternalPaths(vercelDir);
   for (const extPath of vercelPaths) {
     const route = routes.find((r) => r.path === extPath);
     if (route) {
@@ -551,6 +552,7 @@ export async function scan(config: Config): Promise<ScanResult> {
   const sourceFiles = await fg(extGlob, {
     cwd: referenceScanCwd,
     ignore: [...config.ignore.folders, ...config.ignore.files],
+    dot: true,
   });
 
   // 5. Collect all API references
