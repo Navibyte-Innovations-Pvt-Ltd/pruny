@@ -355,9 +355,9 @@ function checkRouteUsage(route: ApiRoute, references: ApiReference[], nestGlobal
 }
 
 /**
- * Load vercel.json and get cron paths
+ * Load vercel.json and get externally-invoked paths (crons + rewrite/redirect targets)
  */
-function getVercelCronPaths(dir: string): string[] {
+function getVercelExternalPaths(dir: string): string[] {
   const vercelPath = join(dir, 'vercel.json');
 
   if (!existsSync(vercelPath)) {
@@ -367,15 +367,68 @@ function getVercelCronPaths(dir: string): string[] {
   try {
     const content = readFileSync(vercelPath, 'utf-8');
     const config: VercelConfig = JSON.parse(content);
+    const paths: string[] = [];
 
-    if (!config.crons) {
-      return [];
+    // Cron paths
+    if (config.crons) {
+      paths.push(...config.crons.map((cron: { path: string }) => cron.path));
     }
 
-    return config.crons.map((cron: { path: string }) => cron.path);
+    // Rewrite destinations that point to API routes
+    if (config.rewrites) {
+      for (const rw of config.rewrites) {
+        if (rw.destination?.startsWith('/api/')) {
+          paths.push(rw.destination);
+        }
+      }
+    }
+
+    // Redirect sources/destinations that point to API routes
+    if (config.redirects) {
+      for (const rd of config.redirects) {
+        if (rd.source?.startsWith('/api/')) paths.push(rd.source);
+        if (rd.destination?.startsWith('/api/')) paths.push(rd.destination);
+      }
+    }
+
+    return paths;
   } catch {
     return [];
   }
+}
+
+/**
+ * Auto-detect routes that are externally invoked based on project dependencies
+ */
+function getAutoDetectedExternalRoutes(dir: string): string[] {
+  const routes: string[] = [];
+
+  // Check package.json for known libraries that create external routes
+  const packagePaths = [
+    join(dir, 'package.json'),
+  ];
+
+  for (const pkgPath of packagePaths) {
+    if (!existsSync(pkgPath)) continue;
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+      // Auth.js / NextAuth creates /api/auth/[...nextauth]
+      if (allDeps['next-auth'] || allDeps['@auth/nextjs'] || allDeps['@auth/core']) {
+        routes.push('/api/auth/**');
+      }
+
+      // Inngest creates /api/inngest
+      if (allDeps['inngest']) {
+        routes.push('/api/inngest');
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return routes;
 }
 
 export async function scan(config: Config): Promise<ScanResult> {
@@ -464,14 +517,29 @@ export async function scan(config: Config): Promise<ScanResult> {
       routes = routes.filter(r => r.filePath.includes(folderFilter));
   }
 
-  // 3. Mark vercel cron routes as used
-  const cronPaths = getVercelCronPaths(cwd);
-  for (const cronPath of cronPaths) {
-    const route = routes.find((r) => r.path === cronPath);
+  // 3. Mark vercel external routes as used
+  const vercelPaths = getVercelExternalPaths(cwd);
+  for (const extPath of vercelPaths) {
+    const route = routes.find((r) => r.path === extPath);
     if (route) {
       route.used = true;
-      route.references.push('vercel.json (cron)');
+      route.references.push('vercel.json');
       route.unusedMethods = [];
+    }
+  }
+
+  // 3.5 Mark auto-detected external routes as used (next-auth, inngest, etc.)
+  const autoDetectedPaths = getAutoDetectedExternalRoutes(
+    config.appSpecificScan ? config.appSpecificScan.appDir : cwd
+  );
+  for (const extPath of autoDetectedPaths) {
+    for (const route of routes) {
+      if (route.used) continue;
+      if (minimatch(route.path, extPath) || route.path === extPath) {
+        route.used = true;
+        route.references.push('(auto-detected external)');
+        route.unusedMethods = [];
+      }
     }
   }
 
