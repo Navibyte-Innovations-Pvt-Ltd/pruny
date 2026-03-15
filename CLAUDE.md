@@ -59,9 +59,13 @@ Each scanner is a standalone module called by `scanner.ts`:
 - **ESM only**: Package uses `"type": "module"` throughout.
 - **Multi-tenant route matching**: The broken links scanner uses `matchesDynamicSuffix()` to recognize that `/view_seat` is valid when a route like `/tenant/[domain]/view_seat` exists. Users can also manually suppress false positives via `ignore.links` in config.
 - **Config `ignore.links`**: Separate from `ignore.routes` — `routes` is for API endpoints, `links` is for page-level broken link suppression. Both are checked when filtering broken links (backward compatible).
+- **GitHub Actions workflow scanning**: `getGitHubWorkflowPaths()` in `scanner.ts` scans `.github/workflows/*.{yml,yaml}` for `/api/...` references (curl commands, fetch calls, plugin configs). Routes found are marked as used with `.github/workflows` in references. In monorepos, both the app dir and repo root are checked for workflow files.
+- **External route auto-detection**: `getAutoDetectedExternalRoutes()` checks `package.json` dependencies for known libraries that create external routes (next-auth → `/api/auth/**`, inngest → `/api/inngest`). These are marked as used with `(auto-detected external)` in references.
+- **Default ignored folders**: `config.ts` hardcodes common folders (`node_modules`, `.next`, `.git`, `dist`, `.turbo`, `.cache`, `.vercel`, `.husky`, `.swc`, `generated`, `storybook-static`, `build`, `out`, `coverage`) so users don't need to manually ignore them.
 
-## Bug Fix Testing Rule
+## Bug Fix & Feature Completion Rules
 
+### Regression Tests (mandatory)
 Every bug fix MUST include a regression test. When fixing a GitHub issue:
 1. Write a test in `tests/` that reproduces the exact bug scenario described in the issue
 2. Add edge-case tests (different file formats, missing directories, multiple matches, no matches)
@@ -69,6 +73,15 @@ Every bug fix MUST include a regression test. When fixing a GitHub issue:
 4. Run `bun run validate` to confirm all tests pass before considering the fix complete
 
 This prevents the same bug from resurfacing in future releases.
+
+### Documentation Updates (mandatory)
+After every fix or feature, update this `CLAUDE.md` file if the change affects:
+- **Architecture**: New scanner, module, or integration point → update "Source modules" or "Scanners" section
+- **Design decisions**: New pattern or strategy (e.g., external route detection) → add to "Key Design Decisions"
+- **Config options**: New ignore pattern, config field, or CLI flag → document it
+- **Build/dev commands**: New scripts or changed workflows → update "Build & Dev Commands"
+
+Documentation must reflect the current state of the codebase — not the state it was in when initially written.
 
 ## Debug Mode
 
