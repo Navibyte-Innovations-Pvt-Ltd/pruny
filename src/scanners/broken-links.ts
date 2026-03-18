@@ -9,6 +9,7 @@ export interface BrokenLink {
 
 export interface BrokenLinksResult {
   total: number;
+  scanned: number;       // total unique internal link paths found
   links: BrokenLink[];
 }
 
@@ -154,6 +155,11 @@ function matchesRoute(refPath: string, routes: Set<string>, routeSegments: strin
  * consists only of static segments and dynamic segments (e.g., tenant/[domain]).
  * This handles multi-tenant subdomain routing where /view_seat is actually
  * /tenant_sites/[domain]/view_seat in the file system.
+ *
+ * The tail (matched portion) must contain at least one literal (non-dynamic)
+ * segment to avoid false matches. Without this guard, a route like
+ * /firm/[slug]/onboarding/[token] would match ANY single-segment link
+ * (e.g., /for-chartered-accountants-2) via the dynamic [token] tail.
  */
 function matchesDynamicSuffix(refSegments: string[], routeSegments: string[]): boolean {
   if (refSegments.length >= routeSegments.length) return false;
@@ -164,8 +170,12 @@ function matchesDynamicSuffix(refSegments: string[], routeSegments: string[]): b
 
   if (!prefix.some(s => /^\[.+\]$/.test(s))) return false;
 
-  // The tail must match exactly
+  // The tail must contain at least one literal segment to be a meaningful match.
+  // A fully-dynamic tail (e.g., [token]) would match any path, creating false positives.
   const tail = routeSegments.slice(prefixLen);
+  const hasLiteralInTail = tail.some(s => !/^\[/.test(s));
+  if (!hasLiteralInTail) return false;
+
   return matchSegments(refSegments, tail);
 }
 
@@ -220,7 +230,7 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
   // No pages found — nothing to validate against
   if (pageFiles.length === 0) {
-    return { total: 0, links: [] };
+    return { total: 0, scanned: 0, links: [] };
   }
 
   const knownRoutes = new Set<string>();
@@ -258,6 +268,7 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
   // 3. Extract link references and check against route map
   const brokenMap = new Map<string, Set<string>>();
+  const allLinkPaths = new Set<string>();
 
   for (const file of sourceFiles) {
     try {
@@ -274,6 +285,8 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
           const cleaned = cleanPath(rawPath);
           if (!cleaned || cleaned === '/') continue;
+
+          allLinkPaths.add(cleaned);
 
           // Check if route exists
           if (!matchesRoute(cleaned, knownRoutes, routeSegmentsList)) {
@@ -317,6 +330,7 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
   return {
     total: links.length,
+    scanned: allLinkPaths.size,
     links,
   };
 }
