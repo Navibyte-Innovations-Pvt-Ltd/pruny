@@ -1,3 +1,16 @@
+# [1.41.0](https://github.com/webnaresh/pruny/compare/v1.40.0...v1.41.0) (2026-03-18)
+
+
+### Bug Fixes
+
+* **broken-links:** require literal segment in dynamic suffix tail to prevent false matches ([#25](https://github.com/webnaresh/pruny/issues/25)) ([b848ce9](https://github.com/webnaresh/pruny/commit/b848ce993d277f22221a2d2c4d14fffb1850d8c6))
+
+
+### Features
+
+* **summary:** always show Internal Links row in summary table when links are scanned ([ba444f3](https://github.com/webnaresh/pruny/commit/ba444f31887654198e0542fac507fef63d726e15))
+* **types:** add scanned count to BrokenLinksResult for summary table visibility ([0b4e0e3](https://github.com/webnaresh/pruny/commit/0b4e0e389e3e42e690f4094cc77e758236e714fc))
+
 # [1.40.0](https://github.com/webnaresh/pruny/compare/v1.39.1...v1.40.0) (2026-03-15)
 
 
