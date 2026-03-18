@@ -7,7 +7,7 @@
 Pruny is a TypeScript CLI tool that uses regex-based static analysis to detect and remove unused code. It scans for:
 
 1. **Unused API Routes** - Next.js `route.ts` handlers and NestJS controller methods not referenced anywhere
-2. **Broken Internal Links** - `<Link>`, `router.push()`, `redirect()` pointing to pages that don't exist
+2. **Broken Internal Links** - `<Link>`, `router.push()`, `redirect()`, `href: "/path"` in arrays/config objects pointing to pages that don't exist
 3. **Unused Exports** - Named exports and class methods not imported by other files
 4. **Unused Files** - Source files not reachable from any entry point (graph-based analysis)
 5. **Unused Services** - NestJS service methods not called by controllers or other services
@@ -89,7 +89,7 @@ All patterns support glob syntax (`*` matches any, `**` matches nested paths).
 
 ### Multi-Tenant / Subdomain Routing
 
-Pruny automatically recognizes routes under dynamic segments. For example, if `/view_seat` resolves at runtime via `app/tenant/[domain]/view_seat/page.tsx`, Pruny will not report it as broken.
+Pruny automatically recognizes routes under dynamic segments. For example, if `/view_seat` resolves at runtime via `app/tenant/[domain]/view_seat/page.tsx`, Pruny will not report it as broken. The matched tail must contain at least one literal segment (e.g., `view_seat`) — fully-dynamic tails like `[token]` alone won't match arbitrary paths.
 
 For edge cases not covered by auto-detection, use `ignore.links`:
 ```json
@@ -110,7 +110,7 @@ Config files from multiple apps are discovered and merged. CLI `--config` takes 
 
 1. **Regex-based analysis** - All detection uses regex patterns (not AST parsing) for speed
 2. **Route detection** - Finds `app/api/**/route.ts` (Next.js) and `*.controller.ts` (NestJS)
-3. **Link validation** - Matches `<Link href>`, `router.push()`, `redirect()`, `href:`, `revalidatePath()`, `pathname ===` against known page routes
+3. **Link validation** - Matches `<Link href>`, `router.push()`, `redirect()`, `href: "/path"` in arrays/config objects, `<a>` tags, `revalidatePath()`, `pathname ===` against known page routes. Detects links in `.map()` patterns (nav menus, footers, sidebars). Summary table always shows "Internal Links" row when links are scanned
 4. **Dynamic segments** - Understands `[id]`, `[...slug]`, `[[...slug]]` patterns
 5. **Graph-based file reachability** - Traces imports from entry points to find orphaned files
 6. **Worker threads** - Splits export scanning across 2 threads for large projects (500+ files)
