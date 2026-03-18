@@ -7,7 +7,7 @@
 Pruny is a TypeScript CLI tool that uses regex-based static analysis to detect and remove dead code. It scans for:
 
 1. **Unused API Routes** - Next.js `route.ts` handlers and NestJS controller methods not referenced anywhere
-2. **Broken Internal Links** - `<Link>`, `router.push()`, `redirect()` pointing to pages that don't exist
+2. **Broken Internal Links** - `<Link>`, `router.push()`, `redirect()`, `href: "/path"` in arrays/config objects pointing to pages that don't exist
 3. **Unused Exports** - Named exports and class methods not imported by other files
 4. **Unused Files** - Source files not reachable from any entry point (graph-based analysis)
 5. **Unused NestJS Services** - Service methods not called by controllers or other services
@@ -175,9 +175,21 @@ Pruny extracts internal link references from these patterns:
 - `revalidatePath("/path")`
 - `pathname === "/path"` (usePathname comparisons)
 
-It then validates each path against the known routes built from your `app/**/page.tsx` file tree. Dynamic segments (`[id]`, `[...slug]`, `[[...slug]]`) are matched correctly.
+This means links defined in arrays and rendered via `.map()` are detected — a common pattern for navigation menus, footer links, and sidebar items:
 
-**Multi-tenant routing**: If a link like `/view_seat` is not a direct route but exists under a dynamic parent (e.g., `app/tenant/[domain]/view_seat/page.tsx`), Pruny recognizes it as valid. This handles subdomain-based multi-tenant architectures automatically.
+```tsx
+const navLinks = [
+  { href: "/about", label: "About" },        // checked
+  { href: "/nonexistent", label: "Missing" }, // flagged as broken
+];
+// Later: navLinks.map(item => <Link href={item.href}>...)
+```
+
+All paths are validated against the known routes built from your `app/**/page.tsx` file tree. Dynamic segments (`[id]`, `[...slug]`, `[[...slug]]`) are matched correctly.
+
+The summary table always shows an "Internal Links" row when links are scanned, displaying Total/Valid/Broken counts so you can see the feature is active even with 0 broken links.
+
+**Multi-tenant routing**: If a link like `/view_seat` is not a direct route but exists under a dynamic parent (e.g., `app/tenant/[domain]/view_seat/page.tsx`), Pruny recognizes it as valid. The matched tail must contain at least one literal segment (e.g., `view_seat`) — fully-dynamic tails like `[token]` alone won't match arbitrary paths. This handles subdomain-based multi-tenant architectures automatically.
 
 ### Unused Exports
 
