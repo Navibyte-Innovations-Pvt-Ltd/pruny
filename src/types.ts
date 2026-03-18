@@ -88,6 +88,7 @@ export interface ScanResult {
   };
   brokenLinks?: {
     total: number;
+    scanned: number;
     links: BrokenLink[];
   };
   unusedFiles?: {
