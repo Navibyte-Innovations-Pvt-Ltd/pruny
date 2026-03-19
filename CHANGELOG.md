@@ -1,3 +1,10 @@
+# [1.42.0](https://github.com/webnaresh/pruny/compare/v1.41.0...v1.42.0) (2026-03-19)
+
+
+### Features
+
+* **index:** show unused item names in compact grouped list after summary table ([9a306cd](https://github.com/webnaresh/pruny/commit/9a306cd7af8f2a018edf676bdaa32b3a1535979a))
+
 # [1.41.0](https://github.com/webnaresh/pruny/compare/v1.40.0...v1.41.0) (2026-03-18)
 
 
