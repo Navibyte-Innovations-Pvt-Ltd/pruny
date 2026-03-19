@@ -1335,29 +1335,113 @@ function printSummaryTable(result: ScanResult, context: string) {
 
   printTable(summary);
 
-  // Show missing asset details inline — users need file paths to fix broken links
-  if (result.missingAssets && result.missingAssets.total > 0) {
-    console.log(chalk.yellow.bold('\n⚠  Missing Assets (Broken Links):\n'));
-    for (const asset of result.missingAssets.assets) {
-      console.log(chalk.red(`   ✗ ${asset.path}`));
-      for (const ref of asset.references) {
-        console.log(chalk.dim(`     → Referenced in: ${ref}`));
-      }
-    }
-    console.log(chalk.yellow('\n   These files are referenced in code but don\'t exist. Update the links or create the files.'));
+  // Print compact list of unused items after the summary table
+  printUnusedItemsList(result);
+}
+
+/**
+ * Print a compact list of all unused items grouped by category after the summary table.
+ */
+function printUnusedItemsList(result: ScanResult) {
+  const sections: { label: string; items: string[] }[] = [];
+
+  // 1. Fully unused API routes
+  const unusedRoutes = result.routes.filter(r => !r.used);
+  if (unusedRoutes.length > 0) {
+    sections.push({
+      label: 'API Routes',
+      items: unusedRoutes.map(r => {
+        const methods = r.methods.length > 0 ? ` (${r.methods.join(', ')})` : '';
+        return `${r.path}${methods}`;
+      }),
+    });
   }
 
-  // Show broken internal links details inline
+  // 2. Partially unused routes (used route with unused methods)
+  const partialRoutes = result.routes.filter(r => r.used && r.unusedMethods.length > 0);
+  if (partialRoutes.length > 0) {
+    const items: string[] = [];
+    for (const r of partialRoutes) {
+      items.push(`${r.path} → unused: ${r.unusedMethods.join(', ')}`);
+    }
+    sections.push({ label: 'Partially Unused Routes', items });
+  }
+
+  // 3. Unused public assets
+  if (result.publicAssets) {
+    const unusedAssets = result.publicAssets.assets.filter(a => !a.used);
+    if (unusedAssets.length > 0) {
+      sections.push({
+        label: 'Public Files',
+        items: unusedAssets.map(a => a.relativePath),
+      });
+    }
+  }
+
+  // 4. Unused source files
+  if (result.unusedFiles && result.unusedFiles.files.length > 0) {
+    sections.push({
+      label: 'Code Files',
+      items: result.unusedFiles.files.map(f => f.path),
+    });
+  }
+
+  // 5. Unused exports
+  if (result.unusedExports && result.unusedExports.exports.length > 0) {
+    sections.push({
+      label: 'Named Exports',
+      items: result.unusedExports.exports.map(e => `${e.name}  ${e.file}:${e.line}`),
+    });
+  }
+
+  // 6. Unused services
+  if (result.unusedServices && result.unusedServices.methods.length > 0) {
+    sections.push({
+      label: 'NestJS Services',
+      items: result.unusedServices.methods.map(m => `${m.name} (${m.serviceClassName})  ${m.file}:${m.line}`),
+    });
+  }
+
+  // 7. Missing assets
+  if (result.missingAssets && result.missingAssets.total > 0) {
+    sections.push({
+      label: 'Missing Assets',
+      items: result.missingAssets.assets.map(a => {
+        const refs = a.references.map(r => `  → ${r}`).join('\n');
+        return `${a.path}\n${refs}`;
+      }),
+    });
+  }
+
+  // 8. Broken internal links
   if (result.brokenLinks && result.brokenLinks.total > 0) {
-    console.log(chalk.red.bold('\n🔗 Broken Internal Links:\n'));
-    for (const link of result.brokenLinks.links) {
-      console.log(chalk.red(`   ✗ ${link.path}`));
-      for (const ref of link.references) {
-        console.log(chalk.dim(`     → ${ref}`));
+    sections.push({
+      label: 'Broken Internal Links',
+      items: result.brokenLinks.links.map(l => {
+        const refs = l.references.map(r => `  → ${r}`).join('\n');
+        return `${l.path}\n${refs}`;
+      }),
+    });
+  }
+
+  if (sections.length === 0) return;
+
+  const totalItems = sections.reduce((sum, s) => sum + s.items.length, 0);
+  console.log(chalk.red.bold(`\nUnused Items (${totalItems})`));
+  console.log(chalk.dim('─'.repeat(40)));
+
+  for (const section of sections) {
+    console.log(chalk.yellow(`\n${section.label} (${section.items.length}):`));
+    for (const item of section.items) {
+      // Items with newlines (missing assets/broken links with refs) need special handling
+      const lines = item.split('\n');
+      console.log(chalk.red(`  ${lines[0]}`));
+      for (let i = 1; i < lines.length; i++) {
+        console.log(chalk.dim(`  ${lines[i]}`));
       }
     }
-    console.log(chalk.yellow('\n   These links point to pages/routes that don\'t exist. Create the pages or fix the links.'));
   }
+  console.log('');
 }
 
 /**
