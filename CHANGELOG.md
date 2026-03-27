@@ -1,3 +1,10 @@
+## [1.42.1](https://github.com/webnaresh/pruny/compare/v1.42.0...v1.42.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* **constants:** add middleware and proxy to ignored export names for Next.js framework files ([2646bd1](https://github.com/webnaresh/pruny/commit/2646bd10f0274471748a6045b0fe8a05e7e82150))
+
 # [1.42.0](https://github.com/webnaresh/pruny/compare/v1.41.0...v1.42.0) (2026-03-19)
 
 
