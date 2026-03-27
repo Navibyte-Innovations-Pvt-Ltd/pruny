@@ -27,6 +27,8 @@ export const IGNORED_EXPORT_NAMES = new Set([
   'default',
   // Serverless/Lambda entry points (invoked by runtime, not imported)
   'handler', 'main', 'lambdaHandler',
+  // Next.js framework entry points (invoked by framework, not imported)
+  'middleware', 'proxy',
 ]);
 
 /** NestJS/framework decorators that imply the method is called by the framework */
