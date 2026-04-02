@@ -22,6 +22,8 @@ export const DEFAULT_CONFIG: Config = {
       '**/.swc/**',
       '**/generated/**',
       '**/storybook-static/**',
+      '**/ios/**',
+      '**/android/**',
     ],
     files: [],
     links: [],
