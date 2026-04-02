@@ -64,6 +64,7 @@ Each scanner is a standalone module called by `scanner.ts`:
 - **External route auto-detection**: `getAutoDetectedExternalRoutes()` checks `package.json` dependencies for known libraries that create external routes (next-auth → `/api/auth/**`, inngest → `/api/inngest`). These are marked as used with `(auto-detected external)` in references.
 - **Default ignored folders**: `config.ts` hardcodes common folders (`node_modules`, `.next`, `.git`, `dist`, `.turbo`, `.cache`, `.vercel`, `.husky`, `.swc`, `generated`, `storybook-static`, `build`, `out`, `coverage`) so users don't need to manually ignore them.
 - **Framework entry point exports**: `IGNORED_EXPORT_NAMES` in `constants.ts` includes `middleware` and `proxy` — Next.js framework entry points invoked by the runtime, not imported by user code. `proxy.ts` is the Next.js 16 replacement for `middleware.ts`. The unused-files scanner also treats both as entry points in its glob patterns.
+- **Expo / React Native support**: `detectAppFramework()` in `utils.ts` reads an app's `package.json` to identify Expo/RN apps. The unused-files scanner adds Expo Router entry patterns (`_layout.tsx`, all `app/` files) when Expo is detected, so RN files aren't falsely flagged as unused. The broken-links scanner excludes source files from Expo/RN apps in monorepos to prevent Expo Router navigation patterns (e.g., `/(tabs)/home`) from being flagged as broken Next.js page links.
 
 ## Bug Fix & Feature Completion Rules
 
