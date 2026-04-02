@@ -1,6 +1,7 @@
 import fg from 'fast-glob';
 import { readFileSync } from 'node:fs';
 import type { Config } from '../types.js';
+import { detectAppFramework } from '../utils.js';
 
 export interface BrokenLink {
   path: string;          // e.g. '/signup'
@@ -260,11 +261,35 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
   const extensions = config.extensions;
   const globPattern = `**/*{${extensions.join(',')}}`;
 
-  const sourceFiles = await fg(globPattern, {
+  let sourceFiles = await fg(globPattern, {
     cwd: refDir,
     ignore,
     absolute: true,
   });
+
+  // In monorepos, exclude files from Expo/React Native apps — their navigation patterns
+  // (e.g., /(tabs)/home, /(auth)/login) are Expo Router routes, not Next.js page links.
+  if (config.appSpecificScan) {
+    const { readdirSync, lstatSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const appsDir = join(config.appSpecificScan.rootDir, 'apps');
+    try {
+      const apps = readdirSync(appsDir).filter(a => lstatSync(join(appsDir, a)).isDirectory());
+      const expoAppDirs: string[] = [];
+      for (const app of apps) {
+        const appPath = join(appsDir, app);
+        const frameworks = detectAppFramework(appPath);
+        if (frameworks.includes('expo') || frameworks.includes('react-native')) {
+          expoAppDirs.push(appPath);
+        }
+      }
+      if (expoAppDirs.length > 0) {
+        sourceFiles = sourceFiles.filter(f => !expoAppDirs.some(d => f.startsWith(d)));
+      }
+    } catch {
+      // Ignore — not a standard monorepo layout
+    }
+  }
 
   // 3. Extract link references and check against route map
   const brokenMap = new Map<string, Set<string>>();

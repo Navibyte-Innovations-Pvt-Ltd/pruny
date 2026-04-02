@@ -5,6 +5,34 @@
 
 import { isAbsolute, join, resolve, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+
+export type AppFramework = 'nextjs' | 'nestjs' | 'expo' | 'react-native' | 'unknown';
+
+/**
+ * Detect the framework of an app by reading its package.json dependencies.
+ */
+export function detectAppFramework(appDir: string): AppFramework[] {
+  const pkgPath = join(appDir, 'package.json');
+  if (!existsSync(pkgPath)) return ['unknown'];
+
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const allDeps = {
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+    };
+
+    const frameworks: AppFramework[] = [];
+    if (allDeps['next']) frameworks.push('nextjs');
+    if (allDeps['@nestjs/core'] || allDeps['@nestjs/common']) frameworks.push('nestjs');
+    if (allDeps['expo']) frameworks.push('expo');
+    else if (allDeps['react-native']) frameworks.push('react-native');
+
+    return frameworks.length > 0 ? frameworks : ['unknown'];
+  } catch {
+    return ['unknown'];
+  }
+}
 import type { Config } from './types.js';
 
 /**

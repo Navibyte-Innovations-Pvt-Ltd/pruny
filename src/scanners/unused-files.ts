@@ -3,7 +3,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import type { Config, UnusedFile } from '../types.js';
 import { minimatch } from 'minimatch';
-import { parseTsConfigPaths } from '../utils.js';
+import { parseTsConfigPaths, detectAppFramework } from '../utils.js';
 
 /**
  * Scan for unused source files (.ts, .tsx, .js, .jsx)
@@ -97,6 +97,23 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
   const searchDirName = searchDir.toLowerCase();
   if (searchDirName.includes('lambda') || searchDirName.includes('function') || searchDirName.includes('serverless')) {
     entryPatterns.push('{index,handler}.{ts,js}');
+  }
+
+  // Expo / React Native: file-based routing uses _layout.tsx and every file in app/ is a route
+  const frameworks = detectAppFramework(searchDir);
+  const isExpoOrRN = frameworks.includes('expo') || frameworks.includes('react-native');
+  if (isExpoOrRN) {
+    entryPatterns.push(
+      '**/_layout.{ts,tsx,js,jsx}',       // Expo Router layouts (underscore prefix)
+      'app/**/*.{ts,tsx,js,jsx}',          // All files in app/ are Expo Router routes
+      'App.{ts,tsx,js,jsx}',               // Classic RN entry point
+      'index.{ts,tsx,js,jsx}',             // RN entry point
+      'app.{json,config.js,config.ts}',    // Expo config files
+      'metro.config.{js,ts,cjs}',          // Metro bundler config
+      'babel.config.{js,cjs}',             // Babel config
+      'expo-env.d.ts',                     // Expo type declarations
+      'eas.json',                          // EAS Build config
+    );
   }
 
   for (const file of allFiles) {
