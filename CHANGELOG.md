@@ -1,3 +1,10 @@
+## [1.43.1](https://github.com/webnaresh/pruny/compare/v1.43.0...v1.43.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* **config:** add ios and android to default ignored folders for React Native apps ([185bb01](https://github.com/webnaresh/pruny/commit/185bb01f6b3fc57ae14ceff9fbabdd78e3cc910d))
+
 # [1.43.0](https://github.com/webnaresh/pruny/compare/v1.42.1...v1.43.0) (2026-04-02)
 
 
