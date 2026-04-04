@@ -659,7 +659,27 @@ export async function scan(config: Config): Promise<ScanResult> {
     }
   }
 
-  // 6. Mark routes as used
+  // 6. Build a set of normalized Next.js API route paths that exist across the monorepo.
+  // When scanning a specific app (e.g. NestJS backend), Next.js routes live in other apps,
+  // so we must scan the monorepo root for all Next.js route files.
+  const existingNextApiPaths = new Set<string>();
+  // Include routes already found in this scan
+  for (const nr of nextRoutes) {
+    existingNextApiPaths.add(normalizeNextPath(nr.path));
+  }
+  // Also scan across the full monorepo root for Next.js routes in other apps
+  if (config.appSpecificScan) {
+    const monorepoNextFiles = await fg(nextPatterns, {
+      cwd: config.appSpecificScan.rootDir,
+      ignore: config.ignore.folders,
+    });
+    for (const f of monorepoNextFiles) {
+      const apiPath = extractRoutePath(f);
+      existingNextApiPaths.add(normalizeNextPath(apiPath));
+    }
+  }
+
+  // 6.5. Mark routes as used
   for (const route of routes) {
     // Skip ignored routes (check both API path and source file path)
     if (shouldIgnore(route.path, config.ignore.routes) || shouldIgnore(route.filePath, config.ignore.routes)) {
@@ -680,7 +700,7 @@ export async function scan(config: Config): Promise<ScanResult> {
         route.unusedMethods = [];
       } else {
         const unused = route.methods.filter(m => !usedMethods.has(m));
-        
+
         // CRITICAL FIX: To prevent false positive deletion when path matches but method doesn't
         // (e.g. backend GET /refresh called via axios.post), we avoid marking ALL methods as unused
         // if the path itself is being called somewhere in the app.
@@ -697,6 +717,66 @@ export async function scan(config: Config): Promise<ScanResult> {
         if (checkRouteUsage(route, refs, detectedGlobalPrefix).used) {
           route.references.push(file);
         }
+      }
+    }
+  }
+
+  // 7. For NestJS routes marked as "used" via /api prefix variation,
+  // check if a real Next.js route exists at that path. If so, the references
+  // are for the Next.js route, not the NestJS one — mark NestJS route as unused.
+  for (const route of routes) {
+    if (route.type !== 'nestjs' || !route.used) continue;
+
+    // Build the /api variation that could have caused the false match
+    const apiVariation = route.path.startsWith('/api/')
+      ? normalizeNestPath(route.path)
+      : normalizeNestPath('/api' + route.path);
+
+    // Check if a Next.js route exists at this /api path
+    const hasNextReplacement = existingNextApiPaths.has(apiVariation) ||
+      [...existingNextApiPaths].some(np =>
+        np.startsWith(apiVariation + '/') || apiVariation.startsWith(np + '/')
+      );
+
+    if (hasNextReplacement) {
+      // Re-check: does ANY reference point to the NestJS path directly (without /api prefix)?
+      const nestPathDirect = normalizeNestPath(route.path);
+      let hasDirectReference = false;
+
+      for (const ref of allReferences) {
+        if (ref.source !== 'http-client') continue;
+        let normalizedRef = ref.path
+          .replace(/\s+/g, '')
+          .replace(/\$\{[^}]+\}/g, '*')
+          .replace(/\/$/, '')
+          .replace(/\?.*$/, '')
+          .replace(/\/+/g, '/')
+          .toLowerCase();
+
+        if (normalizedRef.startsWith('*')) {
+          const firstSlash = normalizedRef.indexOf('/');
+          if (firstSlash !== -1) normalizedRef = normalizedRef.substring(firstSlash);
+        }
+
+        // Only count as direct if it does NOT start with /api
+        // (references starting with /api are for the Next.js route)
+        if (!normalizedRef.startsWith('/api/') && !normalizedRef.startsWith('/api?')) {
+          if (normalizedRef === nestPathDirect ||
+              normalizedRef.startsWith(nestPathDirect + '/') ||
+              minimatch(normalizedRef, nestPathDirect)) {
+            hasDirectReference = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasDirectReference) {
+        if (process.env.DEBUG_PRUNY) {
+          console.log(`[DEBUG] NestJS route ${route.path} de-marked: Next.js replacement exists at ${apiVariation}`);
+        }
+        route.used = false;
+        route.references = [];
+        route.unusedMethods = [...route.methods];
       }
     }
   }
