@@ -1,3 +1,11 @@
+## [1.43.3](https://github.com/webnaresh/pruny/compare/v1.43.2...v1.43.3) (2026-04-04)
+
+
+### Bug Fixes
+
+* **patterns:** add source field to ApiReference to distinguish HTTP client calls from generic string matches ([109d886](https://github.com/webnaresh/pruny/commit/109d8866c79fa5aa37e18d91734de7cc1ec09411))
+* **scanner:** filter NestJS route usage to HTTP client references only, and flag empty controllers ([3ff5a47](https://github.com/webnaresh/pruny/commit/3ff5a4776a61350d113497cefaa796fd3a1ea6bb))
+
 ## [1.43.2](https://github.com/webnaresh/pruny/compare/v1.43.1...v1.43.2) (2026-04-04)
 
 
