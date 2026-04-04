@@ -77,6 +77,34 @@ describe('extractApiReferences', () => {
     expect(refs.some((r) => r.path.includes('/api/library/details'))).toBe(true);
   });
 
+  it('should mark fetch/axios references as http-client source', () => {
+    const refs = extractApiReferences(`axios.get('/api/users')`);
+    const ref = refs.find((r) => r.path === '/api/users');
+    expect(ref).toBeDefined();
+    expect(ref!.source).toBe('http-client');
+  });
+
+  it('should mark generic string references as generic source', () => {
+    const refs = extractApiReferences(`router.push("/super_admin/admin")`);
+    const ref = refs.find((r) => r.path.includes('/super_admin'));
+    expect(ref).toBeDefined();
+    expect(ref!.source).toBe('generic');
+  });
+
+  it('should mark fetch calls as http-client source', () => {
+    const refs = extractApiReferences(`fetch('/auth/login')`);
+    const ref = refs.find((r) => r.path === '/auth/login');
+    expect(ref).toBeDefined();
+    expect(ref!.source).toBe('http-client');
+  });
+
+  it('should mark /api/ string literals as http-client source', () => {
+    const refs = extractApiReferences(`const url = '/api/tenant-sitemap/test'`);
+    const ref = refs.find((r) => r.path.includes('/api/tenant-sitemap'));
+    expect(ref).toBeDefined();
+    expect(ref!.source).toBe('http-client');
+  });
+
   it('should keep different methods for same path', () => {
     const code = `
       axios.get('/api/users');
