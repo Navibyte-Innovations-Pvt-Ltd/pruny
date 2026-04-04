@@ -181,3 +181,61 @@ describe('NEST_METHOD_PATTERN', () => {
     }
   });
 });
+
+describe('extractApiReferences - dedup does not suppress different paths (issue #35)', () => {
+  it('should detect fetch() inside non-exported function when other template literals exist nearby', () => {
+    // Simulates the real-world scenario from subscriptions.hook.ts:
+    // A large file has template literals (e.g. Razorpay options) followed by
+    // a fetch() call to a different API path. The dedup logic must not suppress
+    // the fetch path just because a prior regex match spans a large character range.
+    const content = `
+const createSubscription = async () => {
+  const options = {
+    name: "PracticeStacks",
+    description: \`Premium Plan (monthly)\`,
+    image: "https://example.com/logo.png",
+    handler: async () => {
+      const res = await fetch("/api/subscriptions/verify", {
+        method: "POST",
+      });
+    },
+  };
+};
+
+const changePlan = async (billingPeriod: "MONTHLY" | "YEARLY") => {
+  const response = await fetch("/api/subscriptions/change-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ billingPeriod }),
+  });
+  return response.json();
+};
+`;
+    const refs = extractApiReferences(content);
+    expect(refs.some((r) => r.path === '/api/subscriptions/change-plan')).toBe(true);
+    expect(refs.some((r) => r.path === '/api/subscriptions/verify')).toBe(true);
+  });
+
+  it('should not let a wide multiline template literal match suppress a separate fetch path', () => {
+    // A backtick-ending string followed by code with no backticks,
+    // then another template literal containing /api/ — the multiline regex
+    // could previously span both, creating a huge match that suppresses later paths
+    const content = `
+const a = someFunc(\`seats\`,
+  image: "https://example.com/logo.png",
+  handler: async () => {
+    const res = await fetch("/api/users/reset", { method: "POST" });
+  }
+);
+
+const b = async () => {
+  const response = await fetch("/api/billing/create", {
+    method: "POST",
+  });
+};
+`;
+    const refs = extractApiReferences(content);
+    expect(refs.some((r) => r.path === '/api/users/reset')).toBe(true);
+    expect(refs.some((r) => r.path === '/api/billing/create')).toBe(true);
+  });
+});
