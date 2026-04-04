@@ -52,6 +52,31 @@ describe('extractApiReferences', () => {
     expect(userGets.length).toBe(1);
   });
 
+  it('should detect /api/ paths inside multiline template literals (XML/HTML builders)', () => {
+    const code = `
+      sitemaps.push(
+        \`  <sitemap>
+    <loc>\${baseUrl}/api/tenant-sitemap/\${library.library_url}</loc>
+    <lastmod>\${library.updated_at.toISOString()}</lastmod>
+  </sitemap>\`
+      );
+    `;
+    const refs = extractApiReferences(code);
+    expect(refs.some((r) => r.path.includes('/api/tenant-sitemap'))).toBe(true);
+  });
+
+  it('should detect /api/ paths in multiline template with multiple segments', () => {
+    const code = `
+      const xml = \`
+        <url>
+          <loc>\${base}/api/library/details/\${id}</loc>
+        </url>
+      \`;
+    `;
+    const refs = extractApiReferences(code);
+    expect(refs.some((r) => r.path.includes('/api/library/details'))).toBe(true);
+  });
+
   it('should keep different methods for same path', () => {
     const code = `
       axios.get('/api/users');
