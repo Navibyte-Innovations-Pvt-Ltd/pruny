@@ -82,8 +82,9 @@ export const API_METHOD_PATTERNS: { regex: RegExp; method?: string; source: 'htt
   { regex: /`([^`\n]*?\/api\/[^`\n]*)`/g, method: undefined, source: 'http-client' },
 
   // /api/ paths inside multiline template literals (e.g. XML/HTML builders)
-  // The /api/ prefix is a strong enough anchor to allow multiline matching safely
-  { regex: /`[^`]*?(\/api\/[\w-]+(?:\/[\w-]+)*(?:\/\$\{[^}]+\})*)[^`]*?`/gs, method: undefined, source: 'http-client' },
+  // Cap pre/post context to 500 chars to prevent spanning across unrelated template literals
+  // when a closing backtick of one literal and opening backtick of another have no backticks between them
+  { regex: /`[^`]{0,500}?(\/api\/[\w-]+(?:\/[\w-]+)*(?:\/\$\{[^}]+\})*)[^`]{0,500}?`/gs, method: undefined, source: 'http-client' },
 
   // Template literal with API URL env var prefix (e.g. `${process.env.NEXT_PUBLIC_API_URL}/auth/login`)
   // These are clearly HTTP calls, not page navigation. Allow ${} interpolations in the path.
@@ -160,9 +161,10 @@ export function extractApiReferences(content: string): ApiReference[] {
   const acceptedMatches: Match[] = [];
 
   for (const match of matches) {
-    // Check if this match is redundant (contained within an already accepted match)
+    // Check if this match is redundant (contained within an already accepted match WITH THE SAME PATH)
+    // Two different API paths should never suppress each other even if one regex span contains the other
     const isRedundant = acceptedMatches.some(accepted => {
-        return accepted.start <= match.start && accepted.end >= match.end;
+        return accepted.path === match.path && accepted.start <= match.start && accepted.end >= match.end;
     });
 
     if (!isRedundant) {
