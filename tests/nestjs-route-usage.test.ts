@@ -188,3 +188,122 @@ export class EmptyController {
     expect(route!.unusedMethods).toEqual([]);
   });
 });
+
+describe('NestJS routes: Next.js replacement route files should not cause false positives', () => {
+  const fixture = makeFixture('nextjs-migration-false-positive');
+
+  beforeAll(() => {
+    // NestJS backend controller
+    mkdirSync(join(fixture.dir, 'apps/backend/src/auth'), { recursive: true });
+    writeFileSync(
+      join(fixture.dir, 'apps/backend/src/auth/auth.controller.ts'),
+      `import { Controller, Post, Get, Param } from '@nestjs/common';
+
+@Controller('auth')
+export class AuthController {
+  @Post('login')
+  login() { return 'ok'; }
+
+  @Get('verify/:phone/:otp')
+  verify() { return 'ok'; }
+
+  @Get('refresh/:token')
+  refresh() { return 'ok'; }
+}
+`
+    );
+
+    // Next.js replacement route files (migrated from NestJS)
+    mkdirSync(join(fixture.dir, 'apps/web/app/api/auth/login'), { recursive: true });
+    writeFileSync(
+      join(fixture.dir, 'apps/web/app/api/auth/login/route.ts'),
+      `import { NextResponse } from "next/server";
+export async function POST(request: Request) {
+  const body = await request.json();
+  const { otp, phone_no } = body;
+  // OTP login logic here
+  return NextResponse.json({ message: "Login successful", success: true });
+}
+`
+    );
+
+    mkdirSync(join(fixture.dir, 'apps/web/app/api/auth/verify/[phone_no]/[otp]'), { recursive: true });
+    writeFileSync(
+      join(fixture.dir, 'apps/web/app/api/auth/verify/[phone_no]/[otp]/route.ts'),
+      `import { NextResponse } from "next/server";
+export async function GET() {
+  return NextResponse.json({ message: "OTP verified", success: true });
+}
+`
+    );
+
+    mkdirSync(join(fixture.dir, 'apps/web/app/api/auth/refresh/[token]'), { recursive: true });
+    writeFileSync(
+      join(fixture.dir, 'apps/web/app/api/auth/refresh/[token]/route.ts'),
+      `import { NextResponse } from "next/server";
+export async function POST() {
+  return NextResponse.json({ message: "Token refreshed", success: true });
+}
+`
+    );
+
+    // Frontend caller that NOW uses internal Next.js routes (not NestJS backend)
+    mkdirSync(join(fixture.dir, 'apps/web/lib'), { recursive: true });
+    writeFileSync(
+      join(fixture.dir, 'apps/web/lib/auth.ts'),
+      `
+const endpoint = "/api/auth/login";
+const res = await fetch(endpoint, { method: 'POST', body: JSON.stringify({ otp: 1234 }) });
+const verifyRes = await fetch("/api/auth/verify/+91123/1234");
+`
+    );
+
+    writeFileSync(join(fixture.dir, 'package.json'), JSON.stringify({
+      dependencies: {},
+    }));
+    writeFileSync(join(fixture.dir, 'apps/backend/package.json'), JSON.stringify({
+      dependencies: { '@nestjs/common': '^10.0.0' },
+    }));
+    writeFileSync(join(fixture.dir, 'apps/web/package.json'), JSON.stringify({
+      dependencies: { 'next': '^14.0.0' },
+    }));
+  });
+
+  afterAll(() => fixture.cleanup());
+
+  it('should NOT mark NestJS /auth/login as used when only Next.js replacement route exists', async () => {
+    const result = await scan(fixture.config({
+      appSpecificScan: {
+        appDir: join(fixture.dir, 'apps/backend'),
+        rootDir: fixture.dir,
+      },
+    }));
+    const route = result.routes.find(r => r.path === '/auth/login' && r.type === 'nestjs');
+    expect(route).toBeDefined();
+    expect(route!.used).toBe(false);
+  });
+
+  it('should NOT mark NestJS /auth/verify/:phone/:otp as used from Next.js replacement route', async () => {
+    const result = await scan(fixture.config({
+      appSpecificScan: {
+        appDir: join(fixture.dir, 'apps/backend'),
+        rootDir: fixture.dir,
+      },
+    }));
+    const route = result.routes.find(r => r.path.includes('/auth/verify'));
+    expect(route).toBeDefined();
+    expect(route!.used).toBe(false);
+  });
+
+  it('should NOT mark NestJS /auth/refresh/:token as used from Next.js replacement route', async () => {
+    const result = await scan(fixture.config({
+      appSpecificScan: {
+        appDir: join(fixture.dir, 'apps/backend'),
+        rootDir: fixture.dir,
+      },
+    }));
+    const route = result.routes.find(r => r.path.includes('/auth/refresh'));
+    expect(route).toBeDefined();
+    expect(route!.used).toBe(false);
+  });
+});
