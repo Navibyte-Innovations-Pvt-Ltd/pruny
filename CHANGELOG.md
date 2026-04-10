@@ -1,3 +1,10 @@
+## [1.43.7](https://github.com/webnaresh/pruny/compare/v1.43.6...v1.43.7) (2026-04-10)
+
+
+### Bug Fixes
+
+* **broken-links:** auto-skip links matching gitignored public file patterns ([7b849db](https://github.com/webnaresh/pruny/commit/7b849db85b4f30e7992546f398b95bff29e6d1ce)), closes [#36](https://github.com/webnaresh/pruny/issues/36)
+
 ## [1.43.6](https://github.com/webnaresh/pruny/compare/v1.43.5...v1.43.6) (2026-04-10)
 
 
