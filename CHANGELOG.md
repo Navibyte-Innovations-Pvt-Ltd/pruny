@@ -1,3 +1,10 @@
+## [1.43.6](https://github.com/webnaresh/pruny/compare/v1.43.5...v1.43.6) (2026-04-10)
+
+
+### Bug Fixes
+
+* **broken-links:** check public/ directory before flagging link as broken ([b4a28ec](https://github.com/webnaresh/pruny/commit/b4a28ec6ed9ad05e9bcc9ad784f8d3e7c492351c)), closes [#36](https://github.com/webnaresh/pruny/issues/36)
+
 ## [1.43.5](https://github.com/webnaresh/pruny/compare/v1.43.4...v1.43.5) (2026-04-04)
 
 
