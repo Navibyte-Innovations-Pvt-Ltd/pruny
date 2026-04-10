@@ -1,5 +1,6 @@
 import fg from 'fast-glob';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Config } from '../types.js';
 import { detectAppFramework } from '../utils.js';
 
@@ -315,6 +316,10 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
           // Check if route exists
           if (!matchesRoute(cleaned, knownRoutes, routeSegmentsList)) {
+            // Check if it's a public static file (e.g., /sitemap.xml, /robots.txt)
+            const publicPath = join(appDir, 'public', cleaned);
+            if (existsSync(publicPath)) continue;
+
             // Check ignore.links patterns (dedicated), falling back to ignore.routes for compat
             const ignorePatterns = [
               ...(config.ignore.links || []),
