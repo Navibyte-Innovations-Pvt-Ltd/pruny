@@ -32,6 +32,7 @@ beforeAll(() => {
   mkdirSync(join(fixtureBase, 'app/tenant/[domain]/review'), { recursive: true });
   mkdirSync(join(fixtureBase, 'app/firm/[slug]/onboarding/[token]'), { recursive: true });
   mkdirSync(join(fixtureBase, 'src'), { recursive: true });
+  mkdirSync(join(fixtureBase, 'public'), { recursive: true });
 
   // Page files
   writeFileSync(join(fixtureBase, 'app/about/page.tsx'), `export default function About() { return <div>About</div>; }`);
@@ -156,6 +157,26 @@ export function External() {
   writeFileSync(join(fixtureBase, 'src/path-check.ts'), `
 const isSettings = pathname === "/settings-page";
 const isAbout = pathname === "/about";
+`);
+
+  // Issue #36: Public static files should not be flagged as broken links
+  writeFileSync(join(fixtureBase, 'public/sitemap.xml'), '<urlset></urlset>');
+  writeFileSync(join(fixtureBase, 'public/robots.txt'), 'User-agent: *');
+  writeFileSync(join(fixtureBase, 'public/manifest.json'), '{}');
+
+  writeFileSync(join(fixtureBase, 'src/public-links.tsx'), `
+import Link from 'next/link';
+
+export function Footer() {
+  return (
+    <footer>
+      <a href="/sitemap.xml">Sitemap</a>
+      <a href="/robots.txt">Robots</a>
+      <a href="/manifest.json">Manifest</a>
+      <a href="/nonexistent-file.pdf">Missing File</a>
+    </footer>
+  );
+}
 `);
 });
 
@@ -361,5 +382,35 @@ describe('Issue #25: matchesDynamicSuffix false positive with fully-dynamic tail
 
     expect(result.scanned).toBeGreaterThan(0);
     expect(result.scanned).toBeGreaterThan(result.total);
+  });
+});
+
+describe('Issue #36: public static files should not be flagged as broken links', () => {
+  it('should NOT flag /sitemap.xml when it exists in public/', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    const sitemapLink = result.links.find(l => l.path === '/sitemap.xml');
+
+    expect(sitemapLink).toBeUndefined();
+  });
+
+  it('should NOT flag /robots.txt when it exists in public/', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    const robotsLink = result.links.find(l => l.path === '/robots.txt');
+
+    expect(robotsLink).toBeUndefined();
+  });
+
+  it('should NOT flag /manifest.json when it exists in public/', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    const manifestLink = result.links.find(l => l.path === '/manifest.json');
+
+    expect(manifestLink).toBeUndefined();
+  });
+
+  it('should still flag links to files that do NOT exist in public/', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    const missingFile = result.links.find(l => l.path === '/nonexistent-file.pdf');
+
+    expect(missingFile).toBeDefined();
   });
 });
