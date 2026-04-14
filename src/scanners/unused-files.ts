@@ -140,8 +140,10 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
   const queue = Array.from(entryFiles);
   const visited = new Set<string>(entryFiles);
 
-  // Enhanced regex to handle newlines and various import styles
-  const importRegex = /from\s+['"]([^'"]+)['"]|import\(['"]([^'"]+)['"]\)|require\(['"]([^'"]+)['"]\)/g;
+  // Enhanced regex to handle newlines, various import styles, and webpack magic comments.
+  // The (?:\/\*[\s\S]*?\*\/\s*)* part skips zero or more block comments (e.g.
+  // /* webpackChunkName: "foo" */) that Next.js and bundlers insert inside import().
+  const importRegex = /from\s+['"]([^'"]+)['"]|import\(\s*(?:\/\*[\s\S]*?\*\/\s*)*['"]([^'"]+)['"]\)|require\(\s*(?:\/\*[\s\S]*?\*\/\s*)*['"]([^'"]+)['"]\)/g;
 
   while (queue.length > 0) {
     const currentFile = queue.shift()!;
