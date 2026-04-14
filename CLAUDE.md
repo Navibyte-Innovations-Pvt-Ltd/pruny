@@ -76,7 +76,7 @@ Each scanner is a standalone module called by `scanner.ts`:
 
 ## Key Design Decisions
 
-- **Regex over AST**: All code analysis uses regex pattern matching from `src/patterns.ts`, not an AST parser. Changes to detection logic should update patterns there. The broken links scanner (`src/scanners/broken-links.ts`) has its own link-extraction patterns separate from `patterns.ts`.
+- **Regex over AST**: All code analysis uses regex pattern matching from `src/patterns.ts`, not an AST parser. Changes to detection logic should update patterns there. The broken links scanner (`src/scanners/broken-links.ts`) has its own link-extraction patterns separate from `patterns.ts`. The unused-files scanner (`src/scanners/unused-files.ts`) also has its own import regex that handles `from '...'`, `import('...')` (including webpack magic comments like `/* webpackChunkName */`), and `require('...')`.
 - **Two-pass deletion**: Fix mode runs a second `scanUnusedExports()` pass after deleting routes to catch newly dead code. Service files (`.service.ts`) are skipped in the second pass.
 - **Worker threads**: `unused-exports.ts` splits work across 2 workers for large projects (500+ files).
 - **Monorepo awareness**: Walks up directory tree looking for `apps/` directory; scans routes within the target app but checks references across the full monorepo root.
