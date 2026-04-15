@@ -20,10 +20,15 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
 
   process.stdout.write(`   📂 Scanning source files...`);
 
-  // 1. Find all files in the search directory
+  // 1. Find all files in the search directory.
+  // We exclude `ignore.folders` from the glob (for perf — skipping node_modules etc.),
+  // but we DO include files matching `ignore.files`. Those files are not candidates
+  // for being reported as unused, but we still need to trace their imports so that
+  // transitively-reachable files (e.g. lib files imported only from an ignored UI
+  // component wrapper) are correctly marked as used. See issue #38.
   const allFiles = await fg(extGlob, {
     cwd: searchDir,
-    ignore: [...config.ignore.folders, ...config.ignore.files],
+    ignore: config.ignore.folders,
     absolute: true
   });
 
@@ -34,6 +39,18 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
   }
 
   const allFilesSet = new Set(allFiles);
+
+  // Identify files that match `ignore.files`. These stay in the graph for reachability
+  // tracing but are excluded from the unused report and from total/used counts below.
+  const ignoredFileSet = new Set<string>();
+  if (config.ignore.files.length > 0) {
+    for (const file of allFiles) {
+      const relPath = relative(searchDir, file);
+      if (config.ignore.files.some(pattern => minimatch(relPath, pattern, { dot: true }))) {
+        ignoredFileSet.add(file);
+      }
+    }
+  }
 
   // 2. Identify Entry Points
   const entryFiles = new Set<string>();
@@ -125,6 +142,11 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     if (isEntry) entryFiles.add(file);
   }
 
+  // Files in `ignore.files` are implicitly "always used" — the user has declared
+  // they don't want them reported. Treat them as entry points so the BFS traces
+  // their imports and marks downstream files as reachable.
+  for (const file of ignoredFileSet) entryFiles.add(file);
+
   // 3. Parse tsconfig.json paths for alias resolution
   const aliasMap = parseTsConfigPaths(searchDir);
 
@@ -196,8 +218,10 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     }
   }
 
+  // Exclude ignored files from the unused report. They also don't count toward
+  // total/used tallies — the summary reflects only the candidate pool.
   const files: UnusedFile[] = allFiles
-    .filter(f => !usedFiles.has(f))
+    .filter(f => !usedFiles.has(f) && !ignoredFileSet.has(f))
     .map(f => {
       const s = statSync(f);
       return {
@@ -206,9 +230,12 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
       };
     });
 
+  const candidateCount = allFiles.length - ignoredFileSet.size;
+  const usedCandidateCount = candidateCount - files.length;
+
   return {
-    total: allFiles.length,
-    used: usedFiles.size,
+    total: candidateCount,
+    used: usedCandidateCount,
     unused: files.length,
     files
   };
