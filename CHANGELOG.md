@@ -1,3 +1,12 @@
+## [1.43.9](https://github.com/webnaresh/pruny/compare/v1.43.8...v1.43.9) (2026-04-15)
+
+
+### Bug Fixes
+
+* **scanner:** keep ignore.files in referenceFiles for export usage checks ([e0a8b18](https://github.com/webnaresh/pruny/commit/e0a8b18fb22de89084b3947f943686c56ff3d9ac))
+* **scanner:** trace imports through ignore.files entries for reachability ([d1fb963](https://github.com/webnaresh/pruny/commit/d1fb96316f3b67d592f8635e30ae9f7c03c51d9a))
+* **tsconfig:** make JSONC comment stripper string-literal aware ([145637b](https://github.com/webnaresh/pruny/commit/145637b8d5356c1cf17a6e52cdef47a69c3bb5f3))
+
 ## [1.43.8](https://github.com/webnaresh/pruny/compare/v1.43.7...v1.43.8) (2026-04-14)
 
 
