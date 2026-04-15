@@ -166,11 +166,16 @@ export function parseTsConfigPaths(searchDir: string): Map<string, string[]> {
  */
 function readTsConfigWithExtends(configPath: string): { paths?: Record<string, string[]>; baseUrl?: string } {
   try {
-    // Strip JSON comments and trailing commas for tsconfig tolerance
+    // Strip JSON comments and trailing commas for tsconfig tolerance.
+    // String literals are captured by the first alternative and returned as-is,
+    // so `/*` or `//` sequences inside strings (e.g. the common "@/*": ["./*"]
+    // path alias) are preserved rather than being misread as comment markers.
     const raw = readFileSync(configPath, 'utf-8');
     const cleaned = raw
-      .replace(/\/\/.*$/gm, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(
+        /("(?:\\.|[^"\\])*")|\/\/.*$|\/\*[\s\S]*?\*\//gm,
+        (_m, str) => (str as string | undefined) ?? ''
+      )
       .replace(/,(\s*[}\]])/g, '$1');
     const config = JSON.parse(cleaned);
 
