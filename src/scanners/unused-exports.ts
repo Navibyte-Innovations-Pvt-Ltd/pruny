@@ -180,10 +180,14 @@ export async function scanUnusedExports(config: Config, routes: ApiRoute[] = [],
     return { total: 0, used: 0, unused: 0, exports: [] };
   }
 
-  // 3. Find Reference Files (to check for usage)
+  // 3. Find Reference Files (to check for usage).
+  // Note: `config.ignore.files` is intentionally NOT applied here. Those files are
+  // excluded from candidates (we don't report their exports) but they must remain
+  // in the reference set — otherwise an export that is used only from an ignored
+  // UI wrapper / server action gets falsely flagged. See issue #38.
   const referenceFiles = await fg(extGlob, {
     cwd: referenceCwd,
-    ignore: [...DEFAULT_IGNORE, ...config.ignore.folders, ...config.ignore.files],
+    ignore: [...DEFAULT_IGNORE, ...config.ignore.folders],
     absolute: true
   });
 
