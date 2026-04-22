@@ -38,11 +38,32 @@ After fixing a bug or adding a feature, **always** build and run against these t
 
 ```bash
 bun run build
-node dist/index.js --dir /Users/webnaresh/coding-line/practice-stack/apps/web --all
-node dist/index.js --dir /Users/webnaresh/coding-line/abhyaiska --all
+node dist/index.js --dir /Users/webnaresh/coding-line/practice-stack --ignore-apps extension
+node dist/index.js --dir /Users/webnaresh/coding-line/abhyaiska
 ```
 
 Both must exit with 0 unused items (or only known/pre-existing issues). If either reports a new false positive, investigate before pushing.
+
+Skip `bun link` during iteration — `node dist/index.js --dir <project>` invokes the freshly built local scanner directly. No npm install / global link needed.
+
+### Testing broken-link scanner specifically
+
+To verify template-literal `${}` capture + gitignore-pattern handling after editing `src/scanners/broken-links.ts`, drop a scratch file into the target project and re-run:
+
+```tsx
+// <project>/app/__test_broken_links.tsx (gitignored dir optional, any depth works)
+import Link from "next/link";
+const id = "x";
+export const A = () => <Link href={`/does/not/exist/${id}`}>dead</Link>;
+export const B = () => <Link href="/nope">static dead</Link>;
+```
+
+A correct run prints both under **Broken Internal Links**. If nothing surfaces:
+- Check regex captured the template literal — run `DEBUG_PRUNY=1 node dist/index.js --dir <project>` and look for `[TRACE POST]` lines.
+- Check `isGitignoredPublicFile()` isn't flipping on negation patterns in `.gitignore` (lines starting with `!`). Those must be filtered out before feeding to minimatch — otherwise every unrelated path matches and broken detection silently no-ops.
+- Remember template literals are normalized via `normalizePath()` → every `${...}` collapses to `[id]` so they align with Next.js dynamic-route segments.
+
+Delete the scratch file after verifying.
 
 ## Architecture
 
