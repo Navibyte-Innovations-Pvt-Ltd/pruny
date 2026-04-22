@@ -1,3 +1,10 @@
+## [1.43.10](https://github.com/webnaresh/pruny/compare/v1.43.9...v1.43.10) (2026-04-22)
+
+
+### Bug Fixes
+
+* **broken-links:** capture template-literal paths + filter gitignore negation patterns ([0a28bbe](https://github.com/webnaresh/pruny/commit/0a28bbebe552d27042ed6272867b7e9c156c51d9))
+
 ## [1.43.9](https://github.com/webnaresh/pruny/compare/v1.43.8...v1.43.9) (2026-04-15)
 
 
