@@ -18,29 +18,33 @@ export interface BrokenLinksResult {
 
 /**
  * Regex patterns to extract internal route references from source files.
- * Each captures a path starting with / in group 1 (or group 2 for router patterns).
+ *
+ * Both plain string literals AND template literals are captured. For template
+ * literals (paths that embed `${...}`), `normalizePath` later replaces each
+ * expression with `[id]` so the value becomes a dynamic-route reference we
+ * can validate against Next.js's `app/.../[id]/page.tsx` layout.
  */
 const LINK_PATTERNS: RegExp[] = [
-  // <Link href="/path"> or <Link href='/path'>
-  /<Link\s+[^>]*href\s*=\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  // <Link href="/path"> | <Link href='/path'> | <Link href={`/path/${id}`}>
+  /<Link\s+[^>]*href\s*=\s*(?:\{\s*)?['"`](\/[^'"`\s]+)['"`](?:\s*\})?/g,
 
-  // router.push("/path") / router.replace("/path")
-  /router\.(push|replace)\s*\(\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  // router.push("/path") / router.replace("/path") / router.push(`/path/${id}`)
+  /router\.(push|replace)\s*\(\s*['"`](\/[^'"`\s]+)['"`]/g,
 
   // redirect("/path") / permanentRedirect("/path")
-  /(?:redirect|permanentRedirect)\s*\(\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  /(?:redirect|permanentRedirect)\s*\(\s*['"`](\/[^'"`\s]+)['"`]/g,
 
   // href: "/path" (navigation config objects)
-  /href\s*:\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  /href\s*:\s*['"`](\/[^'"`\s]+)['"`]/g,
 
   // <a href="/path"> (plain HTML)
-  /<a\s+[^>]*href\s*=\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  /<a\s+[^>]*href\s*=\s*(?:\{\s*)?['"`](\/[^'"`\s]+)['"`](?:\s*\})?/g,
 
   // revalidatePath("/path")
-  /revalidatePath\s*\(\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  /revalidatePath\s*\(\s*['"`](\/[^'"`\s]+)['"`]/g,
 
   // pathname === "/path" or pathname === '/path' (usePathname comparisons)
-  /pathname\s*===?\s*['"`](\/[^'"`\s{}$]+)['"`]/g,
+  /pathname\s*===?\s*['"`](\/[^'"`\s]+)['"`]/g,
 ];
 
 /**
@@ -52,6 +56,25 @@ function extractPath(match: RegExpExecArray): string | null {
   if (match[2] && match[2].startsWith('/')) return match[2];
   if (match[1] && match[1].startsWith('/')) return match[1];
   return null;
+}
+
+/**
+ * Normalize a captured path so template-literal placeholders become `[id]`
+ * segments that match Next.js dynamic route files. Anything inside `${...}` —
+ * including complex expressions or nested braces — collapses to `[id]`.
+ *
+ * Examples:
+ *   /dashboard/compliance/${id}                  -> /dashboard/compliance/[id]
+ *   /firm/${slug}/onboarding/${token}            -> /firm/[id]/onboarding/[id]
+ *   /foo/${ getId() }/bar                        -> /foo/[id]/bar
+ */
+function normalizePath(raw: string): string {
+  // Replace `${...}` with [id]. Non-greedy, single-level braces (enough for
+  // typical expressions; `${` nesting is rare in href interpolations).
+  let out = raw.replace(/\$\{[^}]*\}/g, '[id]');
+  // Drop any stray braces that survived (e.g. unmatched closing).
+  out = out.replace(/[{}]/g, '');
+  return out;
 }
 
 /**
@@ -236,7 +259,10 @@ function isGitignoredPublicFile(appDir: string, linkPath: string): boolean {
       const patterns = readFileSync(gitignorePath, 'utf-8')
         .split('\n')
         .map(l => l.trim())
-        .filter(l => l && !l.startsWith('#'));
+        // Drop comments, blanks AND negation re-includes (`!pattern`). minimatch
+        // treats `!foo` as "match anything NOT foo" which flips the match for
+        // every unrelated path and silently ignores broken-link detection.
+        .filter(l => l && !l.startsWith('#') && !l.startsWith('!'));
 
       for (const pattern of patterns) {
         if (minimatch(publicRelPath, pattern, { dot: true }) ||
@@ -347,8 +373,11 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
         let match: RegExpExecArray | null;
 
         while ((match = pattern.exec(content)) !== null) {
-          const rawPath = extractPath(match);
-          if (!rawPath) continue;
+          const extracted = extractPath(match);
+          if (!extracted) continue;
+          // Collapse `${...}` placeholders into [id] so template literals can
+          // be matched against dynamic Next.js route segments.
+          const rawPath = normalizePath(extracted);
           if (shouldSkipPath(rawPath)) continue;
 
           const cleaned = cleanPath(rawPath);
