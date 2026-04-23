@@ -6,75 +6,11 @@ on:
 
 jobs:
   auto-fix:
-    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
       issues: write
       id-token: write
       actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Bun & install
-        uses: WebNaresh/bun-setup-action@v1
-        with:
-          bun-version: '1.3.7'
-
-      - name: Run Claude Code
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          additional_permissions: |
-            actions: read
-          claude_args: |
-            --permission-mode acceptEdits
-            --allowedTools "Bash,Edit,Write,Read,Glob,Grep,WebFetch"
-          prompt: |
-            Issue #${{ github.event.issue.number }} was just opened.
-
-            Title: ${{ github.event.issue.title }}
-            Author: ${{ github.event.issue.user.login }}
-            Assignees: ${{ join(github.event.issue.assignees.*.login, ',') }}
-
-            Body:
-            ${{ github.event.issue.body }}
-
-            STEP 1 — TRIAGE (mandatory, do this FIRST):
-            Decide whether this issue is a "simple bug fix" that you should auto-fix, or a "broader change" that needs human intervention. Err on the side of bailing out — if in doubt, do NOT open a PR.
-
-            Auto-fix ONLY if ALL of these are true:
-            - It is a clearly described bug with a reproducible symptom, a copy/text change, or a small CLI output tweak.
-            - The fix is confined to a small number of files and a localized code region.
-            - It requires NO changes to the core scanner engine (`src/scanner.ts`), the regex pattern library (`src/patterns.ts`), worker-thread orchestration (`src/scanners/unused-exports.ts`), the fixer/deletion engine (`src/fixer.ts`), or config loading (`src/config.ts`).
-            - It requires NO new scanner, NO new CLI command/flag, and NO new dependency (no changes to `package.json` dependencies).
-            - It requires NO changes to CI workflows (`.github/`), build/config files (`tsconfig.json`, `tsup.config.*`, `.releaserc*`), or the semantic-release pipeline.
-            - It does NOT touch more than ~5 files or ~150 lines total.
-            - The expected behavior is unambiguous from the issue body — no design decisions, no product judgment calls required.
-
-            DO NOT auto-fix (bail out) if ANY of these are true:
-            - Core scanner engine, pattern library, worker orchestration, or fixer logic changes are implied.
-            - It is a feature request (new scanner, new CLI flag, new output format), refactor, architectural change, or "broader" rework.
-            - It spans multiple scanners or requires cross-cutting changes.
-            - It touches file deletion/modification logic or anything security-sensitive (e.g. path handling, glob traversal).
-            - The issue is vague, ambiguous, lacks repro steps, or needs clarification.
-            - Fixing it safely would require human product/design judgment.
-
-            If you decide to bail out: post ONE comment on the issue explaining that this looks like a broader change needing human intervention, briefly state why (core-engine change / new scanner / ambiguous / etc.), and STOP. Do NOT create a branch, do NOT open a PR.
-
-            STEP 2 — FIX (only if triage passed):
-            1. Investigate the issue. Read relevant code and confirm the bug before making changes.
-            2. Create and switch to a new branch named `claude/issue-${{ github.event.issue.number }}` based on `main`.
-            3. Implement the fix. Follow existing code style and patterns (regex-based, ESM-only).
-            4. Add a regression test under `tests/` that reproduces the bug and passes after the fix.
-            5. Run `bun run validate` and `bun test` from the repo root. If anything fails, fix it before committing.
-            6. Commit each changed file individually using conventional commit format (e.g. `fix(scanner): ...`). Do NOT add any Co-Authored-By or Claude attribution lines.
-            7. Push the branch to origin.
-            8. Open a pull request targeting `main` using `gh pr create`. Include the line `Closes #${{ github.event.issue.number }}` in the PR body so GitHub auto-closes the issue when the PR merges. Pass `--assignee` with the issue's assignees (comma-separated). If the issue has no assignees, use the issue author `${{ github.event.issue.user.login }}` as the assignee.
-            9. Post a single comment on the issue linking to the new PR.
-            10. NEVER run `gh pr merge` — the repo owner handles merging.
-
-            If at any point during the fix you discover the change is broader than the triage suggested (e.g. you need a new scanner, core-engine changes, or design decisions), STOP, discard the branch, and post a comment on the issue explaining this needs human intervention.
+    uses: Navibyte-Innovations-Pvt-Ltd/.github/.github/workflows/claude-auto-fix-reusable.yml@main
+    secrets: inherit
