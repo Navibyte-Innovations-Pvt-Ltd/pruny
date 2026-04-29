@@ -1,3 +1,17 @@
+# [1.44.0](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.43.10...v1.44.0) (2026-04-29)
+
+
+### Bug Fixes
+
+* **cli:** skip clean apps in --all --fix mode so menu opens only for apps with issues ([f0bff10](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/f0bff107843a2d04e7dc87501f7c77239b86fdb7))
+* **publish:** replace PAT_TOKEN with GH_TOKEN for authentication ([cb3b879](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/cb3b879d93eab6d8c87ae4bd676753f96d01a7cb))
+* **repository:** update GitHub URL to reflect new organization ([23b11c8](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/23b11c8db50cec2f7685d774a5314705340e5c4a))
+
+
+### Features
+
+* **broken-links:** resolve generateStaticParams to validate concrete slug links ([e04d324](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/e04d324c178ac9baa5de555c08fa7d959438da58))
+
 ## [1.43.10](https://github.com/webnaresh/pruny/compare/v1.43.9...v1.43.10) (2026-04-22)
 
 
