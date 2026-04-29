@@ -136,4 +136,83 @@ describe('broken-links: generateStaticParams resolution', () => {
     const paths = result.links.map(l => l.path);
     expect(paths).not.toContain('/users/anything');
   });
+
+  it('does not flag template-literal placeholder against constrained route', async () => {
+    // `<Link href={`/services/${slug}`}>` collapses to `/services/[id]` and
+    // must not trip the static-params constraint — the placeholder is a
+    // dynamic value, not a concrete one we can validate.
+    mkdirSync(join(fixtureBase, 'src'), { recursive: true });
+    writeFileSync(
+      join(fixtureBase, 'src/template-link.tsx'),
+      `import Link from 'next/link';
+export const T = () => <Link href={\`/services/\${slug}\`}>x</Link>;`,
+    );
+    const result = await scanBrokenLinks(makeConfig());
+    const paths = result.links.map(l => l.path);
+    expect(paths).not.toContain('/services/[id]');
+  });
+
+  it('does not flag multi-segment template literal that resolves at runtime', async () => {
+    // /dashboard/${libraryId}/${item.link} → /dashboard/[id]/[id] — the
+    // second segment maps to literal child routes (enrollments/members/...)
+    // we cannot enumerate. Must NOT be flagged broken.
+    mkdirSync(join(fixtureBase, 'app/dashboard/[libId]/enrollments'), { recursive: true });
+    mkdirSync(join(fixtureBase, 'app/dashboard/[libId]/members'), { recursive: true });
+    writeFileSync(
+      join(fixtureBase, 'app/dashboard/[libId]/enrollments/page.tsx'),
+      `export default function P() { return null; }`,
+    );
+    writeFileSync(
+      join(fixtureBase, 'app/dashboard/[libId]/members/page.tsx'),
+      `export default function P() { return null; }`,
+    );
+    writeFileSync(
+      join(fixtureBase, 'src/dashboard-link.tsx'),
+      `import Link from 'next/link';
+export const D = () => <Link href={\`/dashboard/\${libId}/\${item.link}\`}>x</Link>;`,
+    );
+    const result = await scanBrokenLinks(makeConfig());
+    const paths = result.links.map(l => l.path);
+    expect(paths).not.toContain('/dashboard/[id]/[id]');
+  });
+});
+
+describe('broken-links: runtime-generated public assets', () => {
+  const base = join(import.meta.dir, 'fixtures/runtime-public-test');
+
+  beforeAll(() => {
+    mkdirSync(join(base, 'app'), { recursive: true });
+    mkdirSync(join(base, 'src'), { recursive: true });
+    writeFileSync(join(base, 'app/page.tsx'), `export default function P() { return null; }`);
+    // Next.js Metadata Files API: app/sitemap.ts → /sitemap.xml at runtime
+    writeFileSync(join(base, 'app/sitemap.ts'), `export default function S() { return []; }`);
+    writeFileSync(
+      join(base, 'src/footer.tsx'),
+      `import Link from 'next/link';
+export const F = () => <>
+  <a href="/sitemap.xml">site</a>
+  <a href="/robots.txt">robots</a>
+  <a href="/manifest.json">m</a>
+  <a href="/favicon.ico">f</a>
+</>;`,
+    );
+  });
+
+  afterAll(() => {
+    try { rmSync(base, { recursive: true, force: true }); } catch {}
+  });
+
+  it('does not flag sitemap.xml/robots.txt/manifest/favicon as broken', async () => {
+    const cfg: Config = {
+      dir: base,
+      ignore: { routes: [], folders: ['**/node_modules/**'], files: [], links: [] },
+      extensions: ['.ts', '.tsx', '.js', '.jsx'],
+    };
+    const result = await scanBrokenLinks(cfg);
+    const paths = result.links.map(l => l.path);
+    expect(paths).not.toContain('/sitemap.xml');
+    expect(paths).not.toContain('/robots.txt');
+    expect(paths).not.toContain('/manifest.json');
+    expect(paths).not.toContain('/favicon.ico');
+  });
 });
