@@ -1,151 +1,30 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
-## Project Overview
+## What pruny is
 
-Pruny is a TypeScript CLI tool that finds and removes unused code in Next.js and NestJS projects. It detects unused API routes, broken internal links, controller methods, public assets, source files, named exports, and service methods using regex-based static analysis (not AST parsing).
+Pruny is a TypeScript CLI that finds and removes unused code in Next.js / NestJS projects — unused API routes, broken internal links, controller methods, public assets, source files, named exports, and service methods. Regex-based static analysis (no AST).
 
-## Build & Dev Commands
-
-```bash
-bun run build        # Build with Bun bundler (main + worker thread)
-bun run dev          # Run src/index.ts directly without building
-bun run lint         # ESLint on src/**
-bun run validate     # Lint + TypeScript type check (tsc --noEmit)
-bun run audit        # Build then run dist/index.js
-pruny --all          # CI mode: scan all apps, exit 1 if issues found
-```
-
-Tests use `bun:test`. Run with `bun test`. Fixtures are in `tests/fixtures/nextjs-app/`.
-
-### Testing locally against another project
-
-After making changes, build and run against any project directory without installing:
+## Commands
 
 ```bash
-bun run build                                           # Build dist/index.js
-node dist/index.js --dir /path/to/your/project          # Run against target project
-node dist/index.js --dir /path/to/your/project --all    # CI mode (exit 1 on issues)
-node dist/index.js --dir /path/to/your/project --fix    # Auto-fix mode
+bun run build        # build dist/ (main + worker)
+bun run dev          # run src/index.ts directly
+bun run lint         # eslint
+bun run validate     # lint + tsc --noEmit
+bun test             # bun:test
+pruny --all          # CI mode: scan all apps, exit 1 if issues
 ```
 
-This uses the locally built dist, not the npm-installed version. Useful for verifying fixes before publishing.
+## Detail docs (read these before non-trivial work)
 
-### Mandatory smoke tests after any change
+- **[docs/architecture.md](docs/architecture.md)** — entry point, source modules, scanners, debug flags, conventions
+- **[docs/design-decisions.md](docs/design-decisions.md)** — non-obvious behavior, rationale, traps to avoid (regex strategy, monorepo, broken-links matcher, NestJS quirks, etc.)
+- **[docs/testing.md](docs/testing.md)** — local iteration without `bun link`, mandatory smoke tests, broken-links scratch fixture, bug-fix policy
 
-After fixing a bug or adding a feature, **always** build and run against these two real-world projects to verify no regressions:
+## Hard rules
 
-```bash
-bun run build
-node dist/index.js --dir /Users/webnaresh/coding-line/practice-stack --ignore-apps extension
-node dist/index.js --dir /Users/webnaresh/coding-line/abhyaiska
-```
-
-Both must exit with 0 unused items (or only known/pre-existing issues). If either reports a new false positive, investigate before pushing.
-
-Skip `bun link` during iteration — `node dist/index.js --dir <project>` invokes the freshly built local scanner directly. No npm install / global link needed.
-
-### Testing broken-link scanner specifically
-
-To verify template-literal `${}` capture + gitignore-pattern handling after editing `src/scanners/broken-links.ts`, drop a scratch file into the target project and re-run:
-
-```tsx
-// <project>/app/__test_broken_links.tsx (gitignored dir optional, any depth works)
-import Link from "next/link";
-const id = "x";
-export const A = () => <Link href={`/does/not/exist/${id}`}>dead</Link>;
-export const B = () => <Link href="/nope">static dead</Link>;
-```
-
-A correct run prints both under **Broken Internal Links**. If nothing surfaces:
-- Check regex captured the template literal — run `DEBUG_PRUNY=1 node dist/index.js --dir <project>` and look for `[TRACE POST]` lines.
-- Check `isGitignoredPublicFile()` isn't flipping on negation patterns in `.gitignore` (lines starting with `!`). Those must be filtered out before feeding to minimatch — otherwise every unrelated path matches and broken detection silently no-ops.
-- Remember template literals are normalized via `normalizePath()` → every `${...}` collapses to `[id]` so they align with Next.js dynamic-route segments.
-
-Delete the scratch file after verifying.
-
-## Architecture
-
-**Entry point**: `bin/pruny.js` -> `dist/index.js` (compiled from `src/index.ts`)
-
-**Core flow**: `src/index.ts` (CLI/UI via Commander.js) -> `src/scanner.ts` (orchestrator) -> individual scanners in `src/scanners/`
-
-### Source modules
-
-- **`src/index.ts`** — CLI setup, interactive prompts, monorepo detection, fix mode with cascading deletion, report output
-- **`src/scanner.ts`** — Orchestrates all sub-scanners, returns `ScanResult`
-- **`src/patterns.ts`** — All regex patterns for detecting API routes, fetch/axios/SWR calls, NestJS decorators
-- **`src/fixer.ts`** — File modification logic: removes methods, exports, and decorators using brace-counting for boundary detection
-- **`src/config.ts`** — Config loading (`pruny.config.json`, `.prunyrc`), `.gitignore` integration, config merging
-- **`src/types.ts`** — All TypeScript interfaces (`Config`, `ApiRoute`, `ScanResult`, `UnusedExport`, etc.)
-- **`src/constants.ts`** — Shared constants (ignored exports, lifecycle methods, invalid names, regexes)
-- **`src/utils.ts`** — Shared utilities (path resolution, filter matching, regex helpers, brace-count sanitization)
-- **`src/init.ts`** — `pruny init` subcommand
-
-### Scanners (`src/scanners/`)
-
-Each scanner is a standalone module called by `scanner.ts`:
-- `broken-links.ts` — Validates internal link references (`<Link>`, `router.push`, `redirect`, etc.) against known page routes. Supports dynamic segments, multi-tenant subdomain routing (auto-detects routes under `[domain]`-style parents), and public static file resolution (links to files in `public/` like `/sitemap.xml` are not flagged as broken)
-- `unused-files.ts` — Graph-based reachability analysis from entry points
-- `unused-exports.ts` — Named export and class method usage (uses worker threads for 500+ files via `src/workers/file-processor.ts`)
-- `unused-services.ts` — NestJS service method usage analysis
-- `public-assets.ts` — Unused files in `public/`
-- `source-assets.ts` — Unused media files in source directories
-- `missing-assets.ts` — References to non-existent public assets
-- `http-usage.ts` — HTTP client call site counts (axios, fetch, got, ky)
-
-## Key Design Decisions
-
-- **Regex over AST**: All code analysis uses regex pattern matching from `src/patterns.ts`, not an AST parser. Changes to detection logic should update patterns there. The broken links scanner (`src/scanners/broken-links.ts`) has its own link-extraction patterns separate from `patterns.ts`. The unused-files scanner (`src/scanners/unused-files.ts`) also has its own import regex that handles `from '...'`, `import('...')` (including webpack magic comments like `/* webpackChunkName */`), and `require('...')`.
-- **Two-pass deletion**: Fix mode runs a second `scanUnusedExports()` pass after deleting routes to catch newly dead code. Service files (`.service.ts`) are skipped in the second pass.
-- **Worker threads**: `unused-exports.ts` splits work across 2 workers for large projects (500+ files).
-- **Monorepo awareness**: Walks up directory tree looking for `apps/` directory; scans routes within the target app but checks references across the full monorepo root.
-- **CI mode (`--all`)**: Non-interactive flag that scans all monorepo apps and exits with code 1 if any unused code is found. Suppresses interactive prompts and "Run with --fix" hints.
-- **ESM only**: Package uses `"type": "module"` throughout.
-- **Static params slug validation**: `resolveStaticParams()` in `broken-links.ts` parses each dynamic route's `generateStaticParams` function and constrains link matches to the resolved concrete values. Supports literal arrays (`[{slug:"x"}]`), string-array `.map(...)`, `Object.keys(IDENT).map(...)`, and `IDENT.map(item => ({slug: item.field}))`. Identifier resolution follows imports across `@/` aliases and re-exports up to 5 hops, including `.json` defaults parsed directly. When the function is missing or unresolvable the scanner falls back to permissive matching to avoid false positives. So a hardcoded `<Link href="/services/foo-bar">` against `/services/[slug]/page.tsx` with a JSON-backed key set will be flagged when `foo-bar` is not in the keys. Iterator-derived links (template literals like `/services/${item.id}`) still collapse to `/services/[id]` and bypass this check — `matchSegments()` detects `[id]`-shaped placeholder ref segments and skips the static-params constraint AND skips literal-vs-literal comparison (so `/dashboard/[id]/[id]` matches `/dashboard/[libraryId]/enrollments`). Without this, the staticParams feature would false-flag template-literal links against constrained routes.
-- **Runtime-generated public assets**: `isRuntimeGeneratedPublicAsset()` whitelists common build-time/runtime files (`sitemap.xml`, `sitemap-*.xml`, `robots.txt`, `manifest.json/webmanifest`, `favicon.ico`, `sw.js`, `service-worker.js`) and any `/sitemap*` link when `next-sitemap.config.{js,mjs,cjs,ts}` exists or when Next.js Metadata Files (`app/sitemap.{ts,tsx,js,jsx}`) are present. These files don't exist in `public/` at scan time but are valid at request time.
-- **Multi-tenant route matching**: The broken links scanner uses `matchesDynamicSuffix()` to recognize that `/view_seat` is valid when a route like `/tenant/[domain]/view_seat` exists. The tail (matched portion) must contain at least one literal segment — fully-dynamic tails like `[token]` are rejected to prevent false matches against arbitrary single-segment paths. Users can also manually suppress false positives via `ignore.links` in config.
-- **Broken links summary visibility**: The summary table always shows an "Internal Links" row when the scanner finds links to check, displaying Total/Valid/Broken counts so users can see the feature is active even when there are 0 broken links.
-- **Config `ignore.links`**: Separate from `ignore.routes` — `routes` is for API endpoints, `links` is for page-level broken link suppression. Both are checked when filtering broken links (backward compatible).
-- **`ignore.files` semantics**: Files matching `config.ignore.files` are excluded from the candidate pool (never reported as unused files or flagged for their exports) but remain in the scan graph for **reachability tracing**. The unused-files scanner adds them as implicit entry points so their imports are traced — otherwise a lib file imported only from an ignored UI wrapper or server action would be wrongly flagged. The unused-exports scanner keeps them in `referenceFiles` for the same reason. Changing this semantic breaks setups where users put UI/component folders under `ignore.files` to suppress noise while those folders still legitimately import shared utilities.
-- **JSONC parser for tsconfig**: `readTsConfigWithExtends()` in `utils.ts` strips `//` and `/* */` comments before `JSON.parse`. The stripper is string-literal-aware — it matches full string literals as the first regex alternative and returns them unchanged, so tsconfig entries like `"@/*": ["./*"]` (which contain `/*` and `*/` sequences inside strings) are preserved. A naive non-aware stripper would corrupt the JSON and silently fall back to an empty alias map, breaking reachability for all `@/`-aliased imports beyond the root-level fallback.
-- **GitHub Actions workflow scanning**: `getGitHubWorkflowPaths()` in `scanner.ts` scans `.github/workflows/*.{yml,yaml}` for `/api/...` references (curl commands, fetch calls, plugin configs). Routes found are marked as used with `.github/workflows` in references. In monorepos, both the app dir and repo root are checked for workflow files.
-- **External route auto-detection**: `getAutoDetectedExternalRoutes()` checks `package.json` dependencies for known libraries that create external routes (next-auth → `/api/auth/**`, inngest → `/api/inngest`). These are marked as used with `(auto-detected external)` in references.
-- **Default ignored folders**: `config.ts` hardcodes common folders (`node_modules`, `.next`, `.git`, `dist`, `.turbo`, `.cache`, `.vercel`, `.husky`, `.swc`, `generated`, `storybook-static`, `build`, `out`, `coverage`, `ios`, `android`) so users don't need to manually ignore them.
-- **Framework entry point exports**: `IGNORED_EXPORT_NAMES` in `constants.ts` includes `middleware` and `proxy` — Next.js framework entry points invoked by the runtime, not imported by user code. `proxy.ts` is the Next.js 16 replacement for `middleware.ts`. The unused-files scanner also treats both as entry points in its glob patterns.
-- **Expo / React Native support**: `detectAppFramework()` in `utils.ts` reads an app's `package.json` to identify Expo/RN apps. The unused-files scanner adds Expo Router entry patterns (`_layout.tsx`, all `app/` files) when Expo is detected, so RN files aren't falsely flagged as unused. The broken-links scanner excludes source files from Expo/RN apps in monorepos to prevent Expo Router navigation patterns (e.g., `/(tabs)/home`) from being flagged as broken Next.js page links.
-- **NestJS route usage source filtering**: `ApiReference` has a `source` field: `'http-client'` (fetch, axios, useSWR, `/api/` strings, `API_URL` env var templates) or `'generic'` (plain string literals). In `checkRouteUsage()`, NestJS routes are only matched against `http-client` references. This prevents page navigation paths like `router.push("/super_admin/admin")` from falsely matching NestJS API route `/super_admin`. Next.js routes still match against all references (both sources) since Next.js API routes use `/api/` prefix which is always `http-client`.
-- **Empty NestJS controller detection**: `extractNestRoutes()` creates a placeholder route (with empty `methods` array) for controllers that have `@Controller()` but zero `@Get/@Post/@Put/@Delete` decorators. These appear as unused routes with no HTTP methods, flagging dead controller files.
-- **NestJS migration false positive prevention**: When a NestJS route like `/auth/login` has an `/api` prefix variation (`/api/auth/login`), and a real Next.js route exists at that path in another monorepo app, references to `/api/auth/login` are attributed to the Next.js route — not the NestJS one. After initial usage marking, a post-pass in `scan()` checks each "used" NestJS route: if a matching Next.js API route exists and no references point to the NestJS path directly (without `/api` prefix), the NestJS route is de-marked as unused. This correctly detects migrated-but-not-yet-deleted NestJS endpoints.
-
-## Bug Fix & Feature Completion Rules
-
-### Regression Tests (mandatory)
-Every bug fix MUST include a regression test. When fixing a GitHub issue:
-1. Write a test in `tests/` that reproduces the exact bug scenario described in the issue
-2. Add edge-case tests (different file formats, missing directories, multiple matches, no matches)
-3. The test must fail without the fix and pass with it
-4. Run `bun run validate` to confirm all tests pass before considering the fix complete
-
-This prevents the same bug from resurfacing in future releases.
-
-### Documentation Updates (mandatory)
-After every fix or feature, update this `CLAUDE.md` file if the change affects:
-- **Architecture**: New scanner, module, or integration point → update "Source modules" or "Scanners" section
-- **Design decisions**: New pattern or strategy (e.g., external route detection) → add to "Key Design Decisions"
-- **Config options**: New ignore pattern, config field, or CLI flag → document it
-- **Build/dev commands**: New scripts or changed workflows → update "Build & Dev Commands"
-
-Documentation must reflect the current state of the codebase — not the state it was in when initially written.
-
-## Debug Mode
-
-Set `DEBUG_PRUNY=1` to enable verbose logging across all modules.
-
-## Conventions
-
-- ESLint flat config with `typescript-eslint` and `eslint-plugin-unused-imports`
-- Unused variables prefixed with `_` are allowed
-- Semantic release on `main` branch (`.releaserc.json`)
-- Bun is used as the package manager and bundler
+1. **Bug fix → regression test.** Reproduce the bug in `tests/`, add edge cases, run `bun run validate`. See [docs/testing.md](docs/testing.md#bug-fix-policy).
+2. **Smoke-test after any scanner change.** Run pruny against both `practice-stack` and `abhyaiska`. See [docs/testing.md](docs/testing.md#mandatory-smoke-tests-after-any-change).
+3. **Update detail docs, not CLAUDE.md.** New architecture → `docs/architecture.md`. New design decision / trap → `docs/design-decisions.md`. CLAUDE.md stays small.
