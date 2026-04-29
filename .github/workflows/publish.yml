@@ -66,4 +66,7 @@ jobs:
           # Revert so subsequent steps / local builds see the original name.
           jq '.name = "pruny"' package.json > package.json.tmp && mv package.json.tmp package.json
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Use the auto-issued GITHUB_TOKEN: it has write:packages perm
+          # because the job declares `permissions: packages: write`.
+          # GH_TOKEN PAT lacks that scope and gets 403 from the npm GH registry.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
