@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/webnaresh/pruny"
+    "url": "https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny"
   },
   "dependencies": {
     "chalk": "^5.3.0",
