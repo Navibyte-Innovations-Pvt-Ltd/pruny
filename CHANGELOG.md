@@ -1,3 +1,10 @@
+## [1.44.1](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.0...v1.44.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **broken-links:** treat template-literal placeholders as wildcards + skip runtime-generated public assets ([4135a9b](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/4135a9b1965c9a02294bce85676cdba92b8970b2))
+
 # [1.44.0](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.43.10...v1.44.0) (2026-04-29)
 
 
