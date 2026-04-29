@@ -53,18 +53,17 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@webnaresh"
+          scope: "@navibyte-innovations-pvt-ltd"
 
       - name: Publish to GitHub Packages
         run: |
-          # Rename package to scoped name for GitHub Packages
-          # We use jq to temporarily modify package.json just for this step
-          jq '.name = "@webnaresh/pruny"' package.json > package.json.tmp && mv package.json.tmp package.json
+          # GH Packages requires the scope to match the repo owner.
+          # Rename to @navibyte-innovations-pvt-ltd/pruny just for this step.
+          jq '.name = "@navibyte-innovations-pvt-ltd/pruny"' package.json > package.json.tmp && mv package.json.tmp package.json
 
-          # Publish using GITHUB_TOKEN
           npm publish --access public
 
-          # Revert name (optional, but good practice in local builds)
+          # Revert so subsequent steps / local builds see the original name.
           jq '.name = "pruny"' package.json > package.json.tmp && mv package.json.tmp package.json
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_TOKEN }}
