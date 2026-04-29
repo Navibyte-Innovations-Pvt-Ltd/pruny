@@ -1,9 +1,9 @@
 import fg from 'fast-glob';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { minimatch } from 'minimatch';
 import type { Config } from '../types.js';
-import { detectAppFramework } from '../utils.js';
+import { detectAppFramework, parseTsConfigPaths } from '../utils.js';
 
 export interface BrokenLink {
   path: string;          // e.g. '/signup'
@@ -150,12 +150,29 @@ function filePathToRoute(filePath: string): string {
 }
 
 /**
+ * Per-route resolved static params.
+ * Maps dynamic param name (e.g. "slug") to a Set of valid concrete values.
+ * Only present when `generateStaticParams` could be statically resolved.
+ */
+export type ResolvedParams = Record<string, Set<string>>;
+
+export interface DynamicRouteInfo {
+  segments: string[];
+  /**
+   * Set when `generateStaticParams` was found AND fully statically resolvable.
+   * If absent, we keep the legacy permissive behavior (any value matches the
+   * dynamic segment) to avoid false positives.
+   */
+  params?: ResolvedParams;
+}
+
+/**
  * Check if a referenced path matches any known route.
  * Handles dynamic segments [slug] and catch-all [...slug].
  * Also handles multi-tenant/subdomain routing where links like /view_seat
  * resolve under dynamic parent routes like /tenant/[domain]/view_seat.
  */
-function matchesRoute(refPath: string, routes: Set<string>, routeSegments: string[][]): boolean {
+function matchesRoute(refPath: string, routes: Set<string>, routes_: DynamicRouteInfo[]): boolean {
   const cleaned = cleanPath(refPath);
 
   // Exact match
@@ -164,13 +181,13 @@ function matchesRoute(refPath: string, routes: Set<string>, routeSegments: strin
   // Check against dynamic routes
   const refSegments = cleaned.split('/').filter(Boolean);
 
-  for (const routeSeg of routeSegments) {
-    if (matchSegments(refSegments, routeSeg)) return true;
+  for (const route of routes_) {
+    if (matchSegments(refSegments, route.segments, route.params)) return true;
 
     // Multi-tenant/subdomain routing: a link like /view_seat may resolve to
     // /tenant_sites/[domain]/view_seat at runtime via middleware/subdomain routing.
     // Check if the link path matches the tail of a dynamic route.
-    if (matchesDynamicSuffix(refSegments, routeSeg)) return true;
+    if (matchesDynamicSuffix(refSegments, route.segments)) return true;
   }
 
   return false;
@@ -207,8 +224,17 @@ function matchesDynamicSuffix(refSegments: string[], routeSegments: string[]): b
 
 /**
  * Match path segments against route segments with dynamic/catch-all support.
+ *
+ * When `params` is provided (static-params constraint resolved from
+ * `generateStaticParams`), a dynamic segment `[name]` only matches when the
+ * concrete value at that position is included in `params[name]`. If `params`
+ * is absent, dynamic segments accept any value (legacy behavior).
  */
-function matchSegments(refSegments: string[], routeSegments: string[]): boolean {
+function matchSegments(
+  refSegments: string[],
+  routeSegments: string[],
+  params?: ResolvedParams,
+): boolean {
   let ri = 0;
   let si = 0;
 
@@ -219,7 +245,19 @@ function matchSegments(refSegments: string[], routeSegments: string[]): boolean 
     if (/^\[\[?\.\.\./.test(routeSeg)) return true;
 
     // Dynamic segment: [id] — matches any single segment
-    if (/^\[.+\]$/.test(routeSeg)) {
+    const dynMatch = /^\[(.+)\]$/.exec(routeSeg);
+    if (dynMatch) {
+      const paramName = dynMatch[1];
+      if (params && params[paramName]) {
+        // Constrain match to known static values (case-insensitive).
+        const ref = refSegments[ri];
+        const allowed = params[paramName];
+        let ok = false;
+        for (const v of allowed) {
+          if (v.toLowerCase() === ref.toLowerCase()) { ok = true; break; }
+        }
+        if (!ok) return false;
+      }
       ri++;
       si++;
       continue;
@@ -304,10 +342,13 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
   }
 
   const knownRoutes = new Set<string>();
-  const routeSegmentsList: string[][] = [];
+  const routeSegmentsList: DynamicRouteInfo[] = [];
 
   // Always add root route
   knownRoutes.add('/');
+
+  // tsconfig path aliases for resolving `@/...` imports in `generateStaticParams`.
+  const aliasMap = parseTsConfigPaths(appDir);
 
   for (const file of pageFiles) {
     const route = filePathToRoute(file);
@@ -316,7 +357,18 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
     // Store segments for dynamic matching
     const segments = route.split('/').filter(Boolean);
     if (segments.some(s => s.startsWith('['))) {
-      routeSegmentsList.push(segments);
+      const absFile = join(appDir, file);
+      const params = resolveStaticParams(absFile, appDir, aliasMap);
+      routeSegmentsList.push({ segments, params: params ?? undefined });
+
+      if (process.env.DEBUG_PRUNY) {
+        if (params) {
+          const summary = Object.entries(params)
+            .map(([k, v]) => `${k}=${v.size}`)
+            .join(', ');
+          console.log(`[DEBUG] Static params for ${route}: ${summary}`);
+        }
+      }
     }
   }
 
@@ -437,4 +489,731 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
     scanned: allLinkPaths.size,
     links,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generateStaticParams resolver
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const JSON_EXT = '.json';
+
+/**
+ * Resolve `generateStaticParams` for a Next.js dynamic route page file.
+ * Returns a map of param-name -> Set of valid concrete values, OR null when
+ * the function is missing, dynamic (DB/network), or otherwise unresolvable.
+ *
+ * Returning null is the safe default — callers fall back to legacy permissive
+ * matching, so an unresolvable `generateStaticParams` never produces a false
+ * positive.
+ */
+export function resolveStaticParams(
+  routeFile: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+): ResolvedParams | null {
+  let content: string;
+  try {
+    content = readFileSync(routeFile, 'utf-8');
+  } catch {
+    return null;
+  }
+
+  const body = extractFunctionBody(content, 'generateStaticParams');
+  if (!body) return null;
+
+  // Find the `return <expr>` (last return wins — usually the only one)
+  const returnExpr = extractReturnExpression(body);
+  if (!returnExpr) return null;
+
+  return resolveParamsExpression(returnExpr, content, routeFile, appDir, aliasMap, new Set(), 0);
+}
+
+/**
+ * Extract the body of a function declaration by name.
+ * Handles `function NAME`, `async function NAME`, `export function NAME`,
+ * `export async function NAME`, plus arrow form `const NAME = () => { ... }`
+ * and `export const NAME = async () => { ... }`.
+ */
+function extractFunctionBody(source: string, name: string): string | null {
+  // function declarations
+  const fnRe = new RegExp(
+    `(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\([^)]*\\)\\s*\\{`,
+    'g',
+  );
+  let m = fnRe.exec(source);
+  if (m) {
+    return readBalanced(source, m.index + m[0].length - 1);
+  }
+
+  // arrow function: const NAME = (...) => { ... }
+  const arrowRe = new RegExp(
+    `(?:export\\s+)?const\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>\\s*\\{`,
+    'g',
+  );
+  m = arrowRe.exec(source);
+  if (m) {
+    return readBalanced(source, m.index + m[0].length - 1);
+  }
+
+  return null;
+}
+
+/**
+ * Read a brace-balanced block starting at `start` (which points at `{`).
+ * Returns the inner content (without the outer braces). String/comment-aware
+ * to avoid miscounting braces inside string literals or comments.
+ */
+function readBalanced(source: string, start: number): string | null {
+  if (source[start] !== '{') return null;
+  let depth = 0;
+  let i = start;
+  let inString: string | null = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (; i < source.length; i++) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (c === '\n') inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (c === '*' && next === '/') { inBlockComment = false; i++; }
+      continue;
+    }
+    if (inString) {
+      if (c === '\\') { i++; continue; }
+      if (c === inString) inString = null;
+      continue;
+    }
+    if (c === '/' && next === '/') { inLineComment = true; i++; continue; }
+    if (c === '/' && next === '*') { inBlockComment = true; i++; continue; }
+    if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return source.slice(start + 1, i);
+    }
+  }
+  return null;
+}
+
+/**
+ * Pull the expression after the final top-level `return` in a function body.
+ */
+function extractReturnExpression(body: string): string | null {
+  // Last return — match `return <stuff until ; or end>`
+  const re = /\breturn\s+([\s\S]+?)(?:;|$)/g;
+  let last: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) last = m;
+  if (!last) return null;
+  return last[1].trim();
+}
+
+/**
+ * Resolve a `generateStaticParams` return expression into a {param -> values} map.
+ *
+ * Supported shapes:
+ *   - `[{ slug: "x" }, { slug: "y" }]`          direct array of objects
+ *   - `["x","y"].map((slug) => ({ slug }))`      string array → param shorthand
+ *   - `IDENT.map(item => ({ slug: item.slug }))` follow IDENT
+ *   - `Object.keys(IDENT).map(...)`              follow IDENT, take keys
+ *   - `Object.entries(IDENT).map(...)`           same
+ */
+function resolveParamsExpression(
+  expr: string,
+  fileContent: string,
+  filePath: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+  visited: Set<string>,
+  depth: number,
+): ResolvedParams | null {
+  if (depth > 4) return null;
+  expr = expr.trim();
+
+  // Case 1: literal array of objects: [{ slug: "x" }, ...]
+  if (expr.startsWith('[')) {
+    const arrText = sliceTopLevelArray(expr);
+    if (arrText) {
+      const tail = expr.slice(arrText.length).trim();
+
+      // [{ id: "x" }, ...]   (no chain)
+      if (!tail) {
+        const arr = parseObjectArray(arrText);
+        if (arr) return mergeParams(arr);
+      }
+
+      // [{ id: "x" }, ...].map(...)  or  ["a","b"].map(...)
+      if (tail.startsWith('.map')) {
+        // Try as string-array first
+        const stringArr = parseStringArray(arrText);
+        if (stringArr) {
+          const paramName = inferParamFromMap(expr) ?? 'slug';
+          return { [paramName]: new Set(stringArr) };
+        }
+        // Fall back: array-of-objects + projection
+        const objArr = parseObjectArray(arrText);
+        if (objArr) {
+          const projection = extractMapProjection(expr);
+          if (!projection) return null;
+          const out: ResolvedParams = {};
+          for (const [param, source] of Object.entries(projection)) {
+            const parts = source.split('.');
+            parts.shift();
+            const values: string[] = [];
+            for (const obj of objArr) {
+              let v: unknown = obj;
+              for (const p of parts) {
+                if (v && typeof v === 'object' && p in (v as Record<string, unknown>)) {
+                  v = (v as Record<string, unknown>)[p];
+                } else { v = undefined; break; }
+              }
+              if (typeof v === 'string') values.push(v);
+            }
+            if (values.length > 0) out[param] = new Set(values);
+          }
+          return Object.keys(out).length > 0 ? out : null;
+        }
+      }
+    }
+  }
+
+  // Case 2: Object.keys(IDENT) / Object.entries(IDENT) ... [.map(...)]
+  const objKeysM = /^Object\.(keys|entries)\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/.exec(expr);
+  if (objKeysM) {
+    const ident = objKeysM[2];
+    const keys = resolveIdentifierKeys(ident, fileContent, filePath, appDir, aliasMap, visited, depth);
+    if (!keys) return null;
+    const paramName = inferParamFromMap(expr) ?? guessFirstParamName(expr) ?? 'slug';
+    return { [paramName]: new Set(keys) };
+  }
+
+  // Case 3: IDENT.map(...) — IDENT may be array of strings or array of objects
+  const identMapM = /^([A-Za-z_$][\w$]*)\s*\.\s*map\s*\(/.exec(expr);
+  if (identMapM) {
+    const ident = identMapM[1];
+    const resolved = resolveIdentifierAsArray(ident, fileContent, filePath, appDir, aliasMap, visited, depth);
+    if (!resolved) return null;
+
+    if (resolved.kind === 'strings') {
+      const paramName = inferParamFromMap(expr) ?? 'slug';
+      return { [paramName]: new Set(resolved.values) };
+    }
+    if (resolved.kind === 'objects') {
+      // Look at projection: map(x => ({ slug: x.foo })) or ({ slug })
+      const projection = extractMapProjection(expr);
+      if (!projection) return null;
+      const out: ResolvedParams = {};
+      for (const [param, source] of Object.entries(projection)) {
+        const values: string[] = [];
+        for (const obj of resolved.values) {
+          // source may be "x" (whole item) or "x.foo" (field)
+          const parts = source.split('.');
+          parts.shift(); // drop iterator name
+          let v: unknown = obj;
+          for (const p of parts) {
+            if (v && typeof v === 'object' && p in (v as Record<string, unknown>)) {
+              v = (v as Record<string, unknown>)[p];
+            } else {
+              v = undefined;
+              break;
+            }
+          }
+          if (typeof v === 'string') values.push(v);
+        }
+        if (values.length > 0) out[param] = new Set(values);
+      }
+      return Object.keys(out).length > 0 ? out : null;
+    }
+    if (resolved.kind === 'objectKeys') {
+      // IDENT was an object literal; .map called on it makes no runtime sense,
+      // but treat keys as available values.
+      const paramName = inferParamFromMap(expr) ?? 'slug';
+      return { [paramName]: new Set(resolved.values) };
+    }
+  }
+
+  return null;
+}
+
+/** Extract `{ paramName: "iter.path" }` projections from the .map callback. */
+function extractMapProjection(expr: string): Record<string, string> | null {
+  // Match the .map( ... ) callback body roughly
+  const bodyMatch = /\.map\s*\(\s*(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*\(?\s*\{([^}]+)\}/.exec(expr);
+  if (!bodyMatch) return null;
+  const iter = (bodyMatch[1] ?? bodyMatch[2] ?? '').trim().split(',')[0].trim() || 'item';
+  const objBody = bodyMatch[3];
+
+  const out: Record<string, string> = {};
+  // Match `key: value` and shorthand `key`
+  const propRe = /([A-Za-z_$][\w$]*)\s*(?::\s*([A-Za-z_$][\w$.]*))?/g;
+  let m: RegExpExecArray | null;
+  while ((m = propRe.exec(objBody)) !== null) {
+    const key = m[1];
+    const value = m[2] ?? key; // shorthand
+    out[key] = value.startsWith(iter + '.') || value === iter ? value : `${iter}.${value}`;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function inferParamFromMap(expr: string): string | null {
+  // map(... => ({ slug: ... }))  → 'slug'
+  const m = /=>\s*\(?\s*\{\s*([A-Za-z_$][\w$]*)\s*[:}]/.exec(expr);
+  return m ? m[1] : null;
+}
+
+function guessFirstParamName(expr: string): string | null {
+  // If projection has shorthand `({ slug })`
+  const m = /\{\s*([A-Za-z_$][\w$]*)\s*\}/.exec(expr);
+  return m ? m[1] : null;
+}
+
+function mergeParams(items: Array<Record<string, string>>): ResolvedParams | null {
+  const out: ResolvedParams = {};
+  for (const item of items) {
+    for (const [k, v] of Object.entries(item)) {
+      if (typeof v !== 'string') continue;
+      if (!out[k]) out[k] = new Set();
+      out[k].add(v);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Parse `[{ k: "v", ... }, ...]` literal. Returns null on anything more complex. */
+function parseObjectArray(expr: string): Array<Record<string, string>> | null {
+  // Strip any trailing chained calls like `.map(...)` — only parse the outer array literal
+  const arrText = sliceTopLevelArray(expr);
+  if (!arrText) return null;
+
+  const inner = arrText.slice(1, -1).trim();
+  if (!inner) return [];
+
+  const items: Array<Record<string, string>> = [];
+  // Split by top-level commas between { ... } objects
+  let depth = 0;
+  let buf = '';
+  const chunks: string[] = [];
+  let inString: string | null = null;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (inString) {
+      if (c === '\\') { buf += c + inner[++i]; continue; }
+      if (c === inString) inString = null;
+      buf += c;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inString = c; buf += c; continue; }
+    if (c === '{' || c === '[' || c === '(') depth++;
+    else if (c === '}' || c === ']' || c === ')') depth--;
+    if (c === ',' && depth === 0) { chunks.push(buf); buf = ''; continue; }
+    buf += c;
+  }
+  if (buf.trim()) chunks.push(buf);
+
+  for (const chunk of chunks) {
+    const obj = parseSimpleObject(chunk.trim());
+    if (!obj) return null;
+    items.push(obj);
+  }
+  return items;
+}
+
+/** Parse `["a", "b", ...]` into a list of strings. Null if any element is not a literal string. */
+function parseStringArray(arrText: string): string[] | null {
+  if (!arrText.startsWith('[') || !arrText.endsWith(']')) return null;
+  const inner = arrText.slice(1, -1).trim();
+  if (!inner) return [];
+  // Reject if it contains object/array tokens (not a pure string array)
+  if (/[{[]/.test(inner)) return null;
+  const out: string[] = [];
+  const re = /["'`]([^"'`]*)["'`]/g;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = re.exec(inner)) !== null) { out.push(m[1]); count++; }
+  // Sanity: roughly one literal per comma-separated chunk
+  const chunks = inner.split(',').filter(s => s.trim()).length;
+  if (count !== chunks) return null;
+  return out;
+}
+
+/** Slice the source for the top-level `[...]` array literal at the start. */
+function sliceTopLevelArray(expr: string): string | null {
+  if (expr[0] !== '[') return null;
+  let depth = 0;
+  let inString: string | null = null;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (inString) {
+      if (c === '\\') { i++; continue; }
+      if (c === inString) inString = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return expr.slice(0, i + 1);
+    }
+  }
+  return null;
+}
+
+/** Parse `{ k: "v", k2: "v2" }` with string values. Null on failure. */
+function parseSimpleObject(text: string): Record<string, string> | null {
+  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+  const body = text.slice(1, -1);
+  const out: Record<string, string> = {};
+  const re = /([A-Za-z_$][\w$]*)\s*:\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`)/g;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = re.exec(body)) !== null) {
+    out[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
+    count++;
+  }
+  return count > 0 ? out : null;
+}
+
+type IdentResolution =
+  | { kind: 'strings'; values: string[] }
+  | { kind: 'objects'; values: Array<Record<string, unknown>> }
+  | { kind: 'objectKeys'; values: string[] };
+
+/** Resolve an identifier to its top-level keys (used for `Object.keys(IDENT)`). */
+function resolveIdentifierKeys(
+  ident: string,
+  fileContent: string,
+  filePath: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+  visited: Set<string>,
+  depth: number,
+): string[] | null {
+  const r = resolveIdentifier(ident, fileContent, filePath, appDir, aliasMap, visited, depth);
+  if (!r) return null;
+  if (r.kind === 'objectKeys') return r.values;
+  if (r.kind === 'objects') {
+    // Treat array-of-objects' .keys as the array length — not meaningful. Skip.
+    return null;
+  }
+  if (r.kind === 'strings') return r.values;
+  return null;
+}
+
+function resolveIdentifierAsArray(
+  ident: string,
+  fileContent: string,
+  filePath: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+  visited: Set<string>,
+  depth: number,
+): IdentResolution | null {
+  return resolveIdentifier(ident, fileContent, filePath, appDir, aliasMap, visited, depth);
+}
+
+/**
+ * Resolve a TS identifier to a value:
+ *  - top-level `const IDENT = { ... }`  → objectKeys
+ *  - top-level `const IDENT = [ ... ]`  → strings or objects
+ *  - default-import from a JSON file    → objectKeys / objects
+ *  - re-exported / re-imported symbol   → follow one hop
+ */
+function resolveIdentifier(
+  ident: string,
+  fileContent: string,
+  filePath: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+  visited: Set<string>,
+  depth: number,
+): IdentResolution | null {
+  if (depth > 5) return null;
+  const visitKey = `${filePath}::${ident}`;
+  if (visited.has(visitKey)) return null;
+  visited.add(visitKey);
+
+  // 1. Look for local const declaration
+  const localValue = findLocalConst(ident, fileContent);
+  if (localValue) {
+    const parsed = parseLiteralValue(localValue);
+    if (parsed) return parsed;
+  }
+
+  // 2. Look for import
+  const importInfo = findImport(ident, fileContent);
+  if (!importInfo) return null;
+
+  const resolvedPath = resolveModulePath(importInfo.path, filePath, appDir, aliasMap);
+  if (!resolvedPath) return null;
+
+  // JSON file: parse directly
+  if (resolvedPath.endsWith(JSON_EXT)) {
+    try {
+      const data = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
+      return literalToResolution(data);
+    } catch {
+      return null;
+    }
+  }
+
+  // TS/JS file: recursively resolve
+  let nextContent: string;
+  try {
+    nextContent = readFileSync(resolvedPath, 'utf-8');
+  } catch {
+    return null;
+  }
+
+  // The export name in the next file. If default import, follow what default exports.
+  // If named import, look up that name there.
+  const nextIdent = importInfo.kind === 'default'
+    ? findDefaultExportIdentifier(nextContent) ?? ident
+    : importInfo.imported;
+
+  return resolveIdentifier(nextIdent, nextContent, resolvedPath, appDir, aliasMap, visited, depth + 1);
+}
+
+interface ImportInfo {
+  kind: 'default' | 'named';
+  imported: string; // for named: original symbol name in the source module
+  path: string;     // module specifier
+}
+
+/** Find an import declaration that brings `ident` into scope. */
+function findImport(ident: string, source: string): ImportInfo | null {
+  // import IDENT from 'PATH'  (default)
+  const defRe = new RegExp(`import\\s+${ident}\\s+from\\s+['"]([^'"]+)['"]`, 'g');
+  let m: RegExpExecArray | null;
+  if ((m = defRe.exec(source)) !== null) {
+    return { kind: 'default', imported: ident, path: m[1] };
+  }
+
+  // import { IDENT } from 'PATH' or { foo as IDENT }
+  const namedRe = /import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]([^'"]+)['"]/g;
+  while ((m = namedRe.exec(source)) !== null) {
+    const specifiers = m[1].split(',').map(s => s.trim());
+    for (const spec of specifiers) {
+      const aliasMatch = /^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/.exec(spec);
+      if (aliasMatch) {
+        if (aliasMatch[2] === ident) {
+          return { kind: 'named', imported: aliasMatch[1], path: m[2] };
+        }
+      } else if (spec === ident) {
+        return { kind: 'named', imported: ident, path: m[2] };
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Resolve a module path (relative or alias) to an absolute file path. */
+function resolveModulePath(
+  spec: string,
+  fromFile: string,
+  appDir: string,
+  aliasMap: Map<string, string[]>,
+): string | null {
+  let candidates: string[] = [];
+
+  if (spec.startsWith('.')) {
+    candidates.push(resolve(dirname(fromFile), spec));
+  } else if (aliasMap.size > 0) {
+    for (const [prefix, targets] of aliasMap.entries()) {
+      if (spec === prefix.replace(/\/$/, '') || spec.startsWith(prefix)) {
+        const sub = spec.slice(prefix.length);
+        for (const t of targets) {
+          candidates.push(sub ? join(t, sub) : t);
+        }
+      }
+    }
+  } else {
+    // Bare specifier without alias — can't resolve. But try `appDir/spec` as last resort.
+    candidates.push(join(appDir, spec));
+  }
+
+  for (const cand of candidates) {
+    // Direct file (must be file, not directory)
+    if (existsSync(cand)) {
+      try {
+        if (statSync(cand).isFile()) return cand;
+      } catch { /* fallthrough */ }
+    }
+    for (const ext of [...TS_EXTS, JSON_EXT]) {
+      if (existsSync(cand + ext)) return cand + ext;
+    }
+    // Index file in directory
+    for (const ext of TS_EXTS) {
+      const idx = join(cand, 'index' + ext);
+      if (existsSync(idx)) return idx;
+    }
+  }
+  return null;
+}
+
+/** Find `const IDENT = <expr>` (top-level) and return the raw expr. */
+function findLocalConst(ident: string, source: string): string | null {
+  const re = new RegExp(`(?:export\\s+)?const\\s+${ident}\\s*(?::[^=]+)?=\\s*`, 'g');
+  const m = re.exec(source);
+  if (!m) return null;
+  const start = m.index + m[0].length;
+  // Read until end of statement (top-level `;` or end-of-line at depth 0)
+  return readExpression(source, start);
+}
+
+function readExpression(source: string, start: number): string {
+  let depth = 0;
+  let inString: string | null = null;
+  let i = start;
+  for (; i < source.length; i++) {
+    const c = source[i];
+    if (inString) {
+      if (c === '\\') { i++; continue; }
+      if (c === inString) inString = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+    if (c === '{' || c === '[' || c === '(') depth++;
+    else if (c === '}' || c === ']' || c === ')') depth--;
+    if (depth === 0 && (c === ';' || c === '\n')) break;
+  }
+  return source.slice(start, i).trim().replace(/[;]+$/, '').trim();
+}
+
+/** Find `export default IDENT;` and return IDENT. */
+function findDefaultExportIdentifier(source: string): string | null {
+  const m = /export\s+default\s+([A-Za-z_$][\w$]*)\s*;?/.exec(source);
+  return m ? m[1] : null;
+}
+
+/**
+ * Parse a literal value expression into IdentResolution.
+ * Supports `{...}`, `["a","b"]`, `[{...},{...}]`.
+ */
+function parseLiteralValue(expr: string): IdentResolution | null {
+  expr = expr.trim();
+
+  // Object literal — collect top-level keys
+  if (expr.startsWith('{')) {
+    const keys = extractTopLevelKeys(expr);
+    if (keys.length > 0) return { kind: 'objectKeys', values: keys };
+    return null;
+  }
+
+  // Array literal of strings
+  if (expr.startsWith('[')) {
+    const arrText = sliceTopLevelArray(expr);
+    if (!arrText) return null;
+    const stringRe = /["'`]([^"'`]*)["'`]/g;
+    const inner = arrText.slice(1, -1);
+    // If items are objects, parse as objects.
+    if (/^\s*\{/.test(inner)) {
+      const objs = parseObjectArray(arrText);
+      if (objs) return { kind: 'objects', values: objs as Array<Record<string, unknown>> };
+      return null;
+    }
+    const values: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = stringRe.exec(inner)) !== null) values.push(m[1]);
+    if (values.length > 0) return { kind: 'strings', values };
+  }
+
+  return null;
+}
+
+/**
+ * Extract top-level keys from a `{ key1: ..., "key2": ... }` literal.
+ * Handles nested braces, strings, and bracket-quoted keys.
+ */
+function extractTopLevelKeys(expr: string): string[] {
+  const inner = expr.slice(1, expr.length - 1);
+  const keys: string[] = [];
+  let depth = 0;
+  let i = 0;
+  let inString: string | null = null;
+  let atKeyPos = true;
+
+  while (i < inner.length) {
+    const c = inner[i];
+
+    if (inString) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === inString) inString = null;
+      i++;
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === '`') {
+      if (atKeyPos && depth === 0) {
+        // Collect quoted key
+        const quote = c;
+        const end = inner.indexOf(quote, i + 1);
+        if (end === -1) break;
+        keys.push(inner.slice(i + 1, end));
+        i = end + 1;
+        // Skip whitespace then `:` then value
+        while (i < inner.length && /\s/.test(inner[i])) i++;
+        if (inner[i] === ':') {
+          i++;
+          atKeyPos = false;
+        }
+        continue;
+      }
+      inString = c;
+      i++;
+      continue;
+    }
+
+    if (c === '{' || c === '[' || c === '(') { depth++; i++; continue; }
+    if (c === '}' || c === ']' || c === ')') { depth--; i++; continue; }
+
+    if (depth === 0 && c === ',') { atKeyPos = true; i++; continue; }
+    if (depth === 0 && c === ':') { atKeyPos = false; i++; continue; }
+
+    if (atKeyPos && depth === 0 && /[A-Za-z_$]/.test(c)) {
+      // Bareword key
+      let j = i;
+      while (j < inner.length && /[\w$]/.test(inner[j])) j++;
+      const key = inner.slice(i, j);
+      // Make sure it's a property key (followed by `:` after optional whitespace)
+      let k = j;
+      while (k < inner.length && /\s/.test(inner[k])) k++;
+      if (inner[k] === ':') {
+        keys.push(key);
+        i = k + 1;
+        atKeyPos = false;
+        continue;
+      }
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+
+  return keys;
+}
+
+/** Convert a parsed JSON value to an IdentResolution. */
+function literalToResolution(data: unknown): IdentResolution | null {
+  if (Array.isArray(data)) {
+    if (data.every(v => typeof v === 'string')) {
+      return { kind: 'strings', values: data as string[] };
+    }
+    if (data.every(v => v && typeof v === 'object')) {
+      return { kind: 'objects', values: data as Array<Record<string, unknown>> };
+    }
+    return null;
+  }
+  if (data && typeof data === 'object') {
+    return { kind: 'objectKeys', values: Object.keys(data as Record<string, unknown>) };
+  }
+  return null;
 }
