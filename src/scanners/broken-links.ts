@@ -248,9 +248,16 @@ function matchSegments(
     const dynMatch = /^\[(.+)\]$/.exec(routeSeg);
     if (dynMatch) {
       const paramName = dynMatch[1];
-      if (params && params[paramName]) {
+      const ref = refSegments[ri];
+
+      // Ref came from a template-literal collapse (e.g. `/blog/${slug}` →
+      // `/blog/[id]`). The `[...]`-shaped token is a placeholder, not a
+      // concrete value — we cannot validate it against the static-params set,
+      // so fall back to permissive matching to avoid false positives.
+      const isPlaceholder = /^\[.+\]$/.test(ref);
+
+      if (params && params[paramName] && !isPlaceholder) {
         // Constrain match to known static values (case-insensitive).
-        const ref = refSegments[ri];
         const allowed = params[paramName];
         let ok = false;
         for (const v of allowed) {
@@ -263,14 +270,58 @@ function matchSegments(
       continue;
     }
 
-    // Literal match
-    if (refSegments[ri].toLowerCase() !== routeSeg.toLowerCase()) return false;
+    // Literal route segment.
+    // If the ref segment is a `[id]`-shaped placeholder (came from a template-
+    // literal collapse, e.g. `${item.link}`), we don't know what value it
+    // resolves to at runtime — accept the match instead of false-flagging.
+    const refSeg = refSegments[ri];
+    if (/^\[.+\]$/.test(refSeg)) {
+      ri++;
+      si++;
+      continue;
+    }
+
+    // Literal-vs-literal compare
+    if (refSeg.toLowerCase() !== routeSeg.toLowerCase()) return false;
 
     ri++;
     si++;
   }
 
   return ri === refSegments.length && si === routeSegments.length;
+}
+
+/**
+ * Check if a link points to a runtime-generated public asset (sitemap, robots,
+ * manifest, etc.). These are produced by next-sitemap, Next.js Metadata Files
+ * (`app/sitemap.ts`, `app/robots.ts`, `app/manifest.ts`), or build steps — so
+ * the file is absent from `public/` at scan time but valid at request time.
+ */
+function isRuntimeGeneratedPublicAsset(appDir: string, linkPath: string): boolean {
+  // Always-allowed runtime files (Next.js + common conventions)
+  if (/^\/(sitemap(?:[-_].+)?\.xml|robots\.txt|manifest\.(?:json|webmanifest)|favicon\.ico|sw\.js|service-worker\.js)$/.test(linkPath)) {
+    return true;
+  }
+
+  // Generic check: if a known generator config exists, assume sitemap-ish files are produced
+  const generatorConfigs = [
+    'next-sitemap.config.js',
+    'next-sitemap.config.mjs',
+    'next-sitemap.config.cjs',
+    'next-sitemap.config.ts',
+  ];
+  if (linkPath.startsWith('/sitemap')) {
+    for (const cfg of generatorConfigs) {
+      if (existsSync(join(appDir, cfg))) return true;
+    }
+    // Next.js 13+ Metadata Files API
+    for (const ext of ['ts', 'tsx', 'js', 'jsx']) {
+      if (existsSync(join(appDir, 'app', `sitemap.${ext}`))) return true;
+      if (existsSync(join(appDir, 'src/app', `sitemap.${ext}`))) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -445,6 +496,7 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
             const publicPath = join(appDir, 'public', cleaned);
             if (existsSync(publicPath)) continue;
             if (isGitignoredPublicFile(appDir, cleaned)) continue;
+            if (isRuntimeGeneratedPublicAsset(appDir, cleaned)) continue;
 
             // Check ignore.links patterns (dedicated), falling back to ignore.routes for compat
             const ignorePatterns = [
