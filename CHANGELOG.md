@@ -1,3 +1,10 @@
+## [1.44.3](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.2...v1.44.3) (2026-04-30)
+
+
+### Bug Fixes
+
+* **handleFixes:** track modifications to routes, exports, and files for cascading scans ([9594a19](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/9594a195b341440ec66949770bd2c42f5ddfba00))
+
 ## [1.44.2](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.1...v1.44.2) (2026-04-30)
 
 
