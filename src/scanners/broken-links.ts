@@ -478,6 +478,10 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
         while ((match = pattern.exec(content)) !== null) {
           const extracted = extractPath(match);
           if (!extracted) continue;
+          // Skip template literal hrefs with variable interpolation — the runtime
+          // value cannot be statically determined, so any validation would be a
+          // false positive. e.g. href={`/business-calculators/${calculator.id}`}
+          if (/\$\{/.test(extracted)) continue;
           // Collapse `${...}` placeholders into [id] so template literals can
           // be matched against dynamic Next.js route segments.
           const rawPath = normalizePath(extracted);
@@ -1073,7 +1077,7 @@ function resolveModulePath(
   appDir: string,
   aliasMap: Map<string, string[]>,
 ): string | null {
-  let candidates: string[] = [];
+  const candidates: string[] = [];
 
   if (spec.startsWith('.')) {
     candidates.push(resolve(dirname(fromFile), spec));

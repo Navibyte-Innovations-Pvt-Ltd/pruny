@@ -31,6 +31,8 @@ beforeAll(() => {
   mkdirSync(join(fixtureBase, 'app/tenant/[domain]/view_seat'), { recursive: true });
   mkdirSync(join(fixtureBase, 'app/tenant/[domain]/review'), { recursive: true });
   mkdirSync(join(fixtureBase, 'app/firm/[slug]/onboarding/[token]'), { recursive: true });
+  mkdirSync(join(fixtureBase, 'app/business-calculators/sip-calculator'), { recursive: true });
+  mkdirSync(join(fixtureBase, 'app/business-calculators/gst-calculator'), { recursive: true });
   mkdirSync(join(fixtureBase, 'src'), { recursive: true });
   mkdirSync(join(fixtureBase, 'public'), { recursive: true });
 
@@ -43,6 +45,8 @@ beforeAll(() => {
   writeFileSync(join(fixtureBase, 'app/tenant/[domain]/view_seat/page.tsx'), `export default function ViewSeat() { return <div>Seat</div>; }`);
   writeFileSync(join(fixtureBase, 'app/tenant/[domain]/review/page.tsx'), `export default function Review() { return <div>Review</div>; }`);
   writeFileSync(join(fixtureBase, 'app/firm/[slug]/onboarding/[token]/page.tsx'), `export default function Onboarding() { return <div>Onboarding</div>; }`);
+  writeFileSync(join(fixtureBase, 'app/business-calculators/sip-calculator/page.tsx'), `export default function SipCalculator() { return <div>SIP</div>; }`);
+  writeFileSync(join(fixtureBase, 'app/business-calculators/gst-calculator/page.tsx'), `export default function GstCalculator() { return <div>GST</div>; }`);
 
   // Source file with various link types
   writeFileSync(join(fixtureBase, 'src/navbar.tsx'), `
@@ -135,6 +139,28 @@ export function Footer() {
         <Link href={item.href} key={item.label}>{item.label}</Link>
       ))}
     </footer>
+  );
+}
+`);
+
+  // Source file with template literal hrefs (Issue: false positive for interpolated hrefs)
+  writeFileSync(join(fixtureBase, 'src/calculator-list.tsx'), `
+import Link from 'next/link';
+
+const calculators = [
+  { id: 'sip-calculator', name: 'SIP Calculator' },
+  { id: 'gst-calculator', name: 'GST Calculator' },
+];
+
+export function CalculatorList() {
+  return (
+    <ul>
+      {calculators.map((calculator) => (
+        <Link href={\`/business-calculators/\${calculator.id}\`} key={calculator.id}>
+          {calculator.name}
+        </Link>
+      ))}
+    </ul>
   );
 }
 `);
@@ -433,5 +459,34 @@ describe('Issue #36: public static files should not be flagged as broken links',
     const buildOutput = result.links.find(l => l.path === '/build-output.js');
 
     expect(buildOutput).toBeUndefined();
+  });
+});
+
+describe('Template literal hrefs with variable interpolation — no false positive', () => {
+  it('should NOT flag href={`/business-calculators/${calculator.id}`} as a broken link', async () => {
+    // The route /business-calculators/[id] does not exist as a dynamic route.
+    // Static routes /business-calculators/sip-calculator and /business-calculators/gst-calculator
+    // do exist, but pruny cannot know calculator.id at static analysis time.
+    // Template literal hrefs must be skipped entirely to avoid false positives.
+    const result = await scanBrokenLinks(makeConfig());
+    const interpolatedLink = result.links.find(l => l.path.startsWith('/business-calculators'));
+
+    expect(interpolatedLink).toBeUndefined();
+  });
+
+  it('should NOT include [id]-style collapsed paths from template literals in broken links', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    // The collapsed form /business-calculators/[id] must not appear in results
+    const collapsedLink = result.links.find(l => l.path === '/business-calculators/[id]');
+
+    expect(collapsedLink).toBeUndefined();
+  });
+
+  it('should still flag genuine broken static links in the same file scan', async () => {
+    const result = await scanBrokenLinks(makeConfig());
+    // /nonexistent from navbar.tsx is a real broken link and must still be caught
+    const nonexistent = result.links.find(l => l.path === '/nonexistent');
+
+    expect(nonexistent).toBeDefined();
   });
 });
