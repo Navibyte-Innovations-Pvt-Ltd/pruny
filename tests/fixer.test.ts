@@ -80,4 +80,29 @@ describe('deleteDeclaration', () => {
     expect(lines.join('\n')).not.toContain('items');
     expect(lines.join('\n')).toContain('export const keep = 1;');
   });
+
+  it('deletes a function with multi-line template literal containing ${...}', () => {
+    const lines = [
+      'export function RelatedContent({ slug }: Props) {',
+      '  const items = [',
+      '    {',
+      '      description: `Free online ${formatTitle(slug)}`,',
+      '    },',
+      '    {',
+      '      className: `rounded-lg ${',
+      "        slug === 'foo' ? 'bg-blue-100' : 'bg-green-100'",
+      '      }`,',
+      '    },',
+      '  ]',
+      '  return items',
+      '}',
+      '',
+      'export const keep = 1;',
+    ];
+
+    const deleted = deleteDeclaration(lines, 0, 'RelatedContent');
+    expect(deleted).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain('RelatedContent');
+    expect(lines.join('\n')).toContain('export const keep = 1;');
+  });
 });
