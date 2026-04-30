@@ -232,13 +232,26 @@ export function removeExportFromLine(rootDir: string, exp: UnusedExport): boolea
   try {
     const content = readFileSync(fullPath, 'utf-8');
     const lines = content.split('\n');
-    const lineIndex = findDeclarationIndex(lines, exp.name, exp.line - 1);
+
+    // Try narrow search first (near the recorded line), then full-file fallback.
+    // Block exports (`export { X, Y }`) record the export line, not the declaration line,
+    // so a narrow search may miss the actual `const X = ...` declaration.
+    let lineIndex = findDeclarationIndex(lines, exp.name, exp.line - 1);
+    if (lineIndex === -1) {
+      lineIndex = findDeclarationIndex(lines, exp.name, 0);
+    }
 
     if (!exp.usedInternally) {
+      if (lineIndex === -1) {
+        // Only in a block export — remove the name from the export { ... } list
+        return removeFromBlockExport(lines, fullPath, exp.name, exp.line);
+      }
       const trueStartLine = findDeclarationStart(lines, lineIndex);
       const deletedLines = deleteDeclaration(lines, trueStartLine, exp.name);
 
       if (deletedLines > 0) {
+        // Also strip from block export if present
+        removeFromBlockExport(lines, fullPath, exp.name, exp.line);
         const newContent = lines.join('\n');
         if (isFileEmpty(newContent)) {
           unlinkSync(fullPath);
@@ -250,7 +263,15 @@ export function removeExportFromLine(rootDir: string, exp: UnusedExport): boolea
       return false;
     }
 
+    // usedInternally = true: just remove the `export` keyword, keep the declaration.
+    if (lineIndex === -1) {
+      // Declaration not found — name is only in a block export; remove it from there
+      return removeFromBlockExport(lines, fullPath, exp.name, exp.line);
+    }
+
     const originalLine = lines[lineIndex];
+    if (!originalLine) return false;
+
     if (originalLine.trim().startsWith('export ')) {
       const newLine = originalLine.replace(/(\s*)export\s+/, '$1');
       lines[lineIndex] = newLine;
@@ -258,11 +279,42 @@ export function removeExportFromLine(rootDir: string, exp: UnusedExport): boolea
       return true;
     }
 
-    return false;
+    // Declaration found but no `export` keyword on its line — it may be in a block export
+    return removeFromBlockExport(lines, fullPath, exp.name, exp.line);
   } catch (err) {
     console.error(`Error fixing export in ${exp.file}:`, err);
     return false;
   }
+}
+
+/**
+ * Remove a single name from a block export statement: export { X, Y, Z }
+ * If the export becomes empty, remove the line entirely.
+ */
+function removeFromBlockExport(lines: string[], fullPath: string, name: string, exportLine: number): boolean {
+  const lineIdx = exportLine - 1;
+  const line = lines[lineIdx];
+  if (!line) return false;
+  if (!/^export\s*\{/.test(line.trim())) return false;
+
+  // Remove the name (with optional trailing comma/space or preceding comma/space)
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let newLine = line
+    .replace(new RegExp(`\\b${escaped}\\b\\s*,\\s*`), '') // "Name, "
+    .replace(new RegExp(`,\\s*\\b${escaped}\\b`), '')      // ", Name"
+    .replace(new RegExp(`\\b${escaped}\\b`), '');           // lone "Name"
+
+  // Normalize spacing inside braces
+  newLine = newLine.replace(/\{\s*\}/, '{}').replace(/\{\s+/, '{ ').replace(/\s+\}/, ' }');
+
+  if (newLine.trim() === 'export {}' || newLine.trim() === 'export { }') {
+    lines.splice(lineIdx, 1);
+  } else {
+    lines[lineIdx] = newLine;
+  }
+
+  writeFileSync(fullPath, lines.join('\n'), 'utf-8');
+  return true;
 }
 
 /**
@@ -403,6 +455,17 @@ export function deleteDeclaration(lines: string[], startLine: number, name: stri
     if (inTemplateLiteral) {
       if (backtickCount % 2 !== 0) {
         inTemplateLiteral = false; // Template literal ends on this line
+        // Count braces AFTER the closing backtick (e.g. `}` in `${x}`})
+        const lastTick = line.lastIndexOf('`');
+        const afterTick = sanitizeLine(line.slice(lastTick + 1));
+        const extraOpens = (afterTick.match(/{/g) || []).length;
+        const extraCloses = (afterTick.match(/}/g) || []).length;
+        braceCount += extraOpens - extraCloses;
+        if (foundBodyOpening && braceCount <= 0) {
+          endLine = i;
+          foundClosing = true;
+          break;
+        }
       }
       continue; // Skip brace counting inside template literals
     }
