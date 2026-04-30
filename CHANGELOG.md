@@ -1,3 +1,10 @@
+## [1.44.7](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.6...v1.44.7) (2026-04-30)
+
+
+### Bug Fixes
+
+* **fixer:** enhance declaration regex to support TypeScript type annotations ([b46ef1a](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/b46ef1a4e3fe18d3565948660e03eceaca46d832))
+
 ## [1.44.6](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.5...v1.44.6) (2026-04-30)
 
 
