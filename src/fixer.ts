@@ -471,14 +471,19 @@ export function deleteDeclaration(lines: string[], startLine: number, name: stri
       continue; // Skip brace counting inside template literals
     }
 
+    // When a multi-line template literal opens, only count braces before the backtick.
+    // The ${...} inside the template span lines, so the closing } would be skipped
+    // while the opening { was already counted — causing braceCount to leak +1 per occurrence.
+    let lineToSanitize = line;
     if (backtickCount % 2 !== 0) {
       inTemplateLiteral = true;
-      // Process this line's braces (code before the backtick) but continue below
+      const firstTick = lineForBackticks.indexOf('`');
+      lineToSanitize = line.slice(0, firstTick);
     }
 
     const isDecorator = trimmed.startsWith('@');
 
-    const cleanLine = sanitizeLine(line);
+    const cleanLine = sanitizeLine(lineToSanitize);
 
     const openBraces = (cleanLine.match(/{/g) || []).length;
     const closeBraces = (cleanLine.match(/}/g) || []).length;
