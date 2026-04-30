@@ -1,3 +1,10 @@
+## [1.44.2](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.1...v1.44.2) (2026-04-30)
+
+
+### Bug Fixes
+
+* **cli:** show report by default, require --fix for interactive cleanup menu ([5c82ef8](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/5c82ef8bb4f5dc0b03a70ddd6bca213ea94c923e))
+
 ## [1.44.1](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.0...v1.44.1) (2026-04-29)
 
 
