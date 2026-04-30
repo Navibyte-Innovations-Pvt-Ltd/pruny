@@ -1,3 +1,10 @@
+## [1.44.9](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.8...v1.44.9) (2026-04-30)
+
+
+### Bug Fixes
+
+* **scanners:** strip comments before scanning for file references ([d672a45](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/d672a456435a73c5cb1c41d3bfdcf3200aef3aca))
+
 ## [1.44.8](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.7...v1.44.8) (2026-04-30)
 
 
