@@ -1,3 +1,10 @@
+## [1.44.8](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.7...v1.44.8) (2026-04-30)
+
+
+### Bug Fixes
+
+* **scanners:** skip template literal hrefs with variable interpolation ([35596d1](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/35596d19e769386695baa5b26f8dafa46c84b07b))
+
 ## [1.44.7](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.6...v1.44.7) (2026-04-30)
 
 
