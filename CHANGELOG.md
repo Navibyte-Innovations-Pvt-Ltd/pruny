@@ -1,3 +1,11 @@
+## [1.44.5](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.4...v1.44.5) (2026-04-30)
+
+
+### Bug Fixes
+
+* **fixer:** track bracket depth in deleteDeclaration to fully delete array-of-objects exports ([606f5f2](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/606f5f290022953ec4d13218584d82e72b91992d))
+* **unused-exports:** detect JSX component usage as internal reference in makeCodePattern ([7deb6ce](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/7deb6ce39ad39e7b48d582c82fb2a621a3c3424c))
+
 ## [1.44.4](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.3...v1.44.4) (2026-04-30)
 
 
