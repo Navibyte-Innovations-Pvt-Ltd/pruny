@@ -1,3 +1,10 @@
+## [1.45.1](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.45.0...v1.45.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **scanners:** update scanUnusedExports to handle dynamic imports correctly ([4c84708](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/4c84708f91d896e33a6d17251f312909ca8aa9dc))
+
 # [1.45.0](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.44.9...v1.45.0) (2026-04-30)
 
 
