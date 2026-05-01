@@ -36,6 +36,10 @@ Detailed rationale and implementation notes for non-obvious behavior. Update thi
 - **GitHub Actions workflow scanning**: `getGitHubWorkflowPaths()` in `scanner.ts` scans `.github/workflows/*.{yml,yaml}` for `/api/...` references (curl commands, fetch calls, plugin configs). Routes found are marked as used with `.github/workflows` in references. In monorepos, both the app dir and repo root are checked for workflow files.
 - **External route auto-detection**: `getAutoDetectedExternalRoutes()` checks `package.json` dependencies for known libraries that create external routes (next-auth → `/api/auth/**`, inngest → `/api/inngest`). These are marked as used with `(auto-detected external)` in references.
 
+## Unused exports: edge cases
+
+- **`lazy()` + dynamic import false positive**: When a file uses `React.lazy(() => import('./tab').then(mod => ({ default: mod.TabName })))`, it declares a local `const TabName = lazy(...)`. The `hasSelfDecl` check sees `const TabName =` and — because there is no static `import { TabName }` — treats the page file as an independent re-declaration and skips it. The actual reference `mod.TabName` is never seen, so `TabName` is wrongly flagged as unused. **Fix**: before skipping, also check for `hasDynamicImportRef` — if the file contains both `import(` and `.TabName` (a property access on the module), it is a consumer, not a re-declaration. See `scanners/unused-exports.ts` around the `hasSelfDecl && !hasSelfImport` guard.
+
 ## Framework specifics
 
 - **Framework entry-point exports**: `IGNORED_EXPORT_NAMES` in `constants.ts` includes `middleware` and `proxy` — Next.js framework entry points invoked by the runtime, not imported by user code. `proxy.ts` is the Next.js 16 replacement for `middleware.ts`. The unused-files scanner also treats both as entry points in its glob patterns.

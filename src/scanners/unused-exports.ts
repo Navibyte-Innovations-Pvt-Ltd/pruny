@@ -521,7 +521,11 @@ export async function scanUnusedExports(config: Config, routes: ApiRoute[] = [],
           `(?:export\\s+)?(?:async\\s+)?(?:function)\\s+${escapeRegExp(exp.name)}\\b|` +
           `(?:export\\s+)?(?:const|let|var|type)\\s+${escapeRegExp(exp.name)}\\s*[=<]`
         ).test(content);
-        if (hasSelfDecl && !hasSelfImport) continue;
+        // Exception: lazy(() => import('...').then(mod => mod.Name)) — the local const wraps
+        // a dynamic import that consumes the named export. Don't skip these files.
+        const hasDynamicImportRef = /import\s*\(/.test(content) &&
+          new RegExp(`\\.${escapeRegExp(exp.name)}\\b`).test(content);
+        if (hasSelfDecl && !hasSelfImport && !hasDynamicImportRef) continue;
         
         if (!hasIgnoreRanges && !isGeneric) {
           // Fast path: Only if no ignore ranges exist for this file AND not a generic method
