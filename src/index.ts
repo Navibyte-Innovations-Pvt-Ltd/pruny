@@ -12,7 +12,7 @@ import { removeExportFromLine, removeMethodFromRoute, findServiceMethodCall, fin
 import { init } from './init.js';
 import type { ApiRoute, Config, ScanResult, PrunyOptions, UnusedExport } from './types.js';
 import { INVALID_METHOD_NAMES } from './constants.js';
-import { getAppName, matchesFilter, resolveFilePath } from './utils.js';
+import { getAppName, matchesFilter, resolveFilePath, startFileCache } from './utils.js';
 
 // --- Types ---
 
@@ -180,6 +180,10 @@ program.action(async (options: PrunyOptions) => {
       let requestedBack = false;
       const isScanAll = isMonorepo && appsToScan.length > 1;
       const allAppResults: { appName: string; result: ScanResult }[] = [];
+
+      // Share file reads across scanners and apps for this pass. Fix/cleanup modes
+      // edit files between scans, so they always read from disk.
+      if (!options.fix && !options.cleanup && !options.dryRun) startFileCache();
 
       // 3. Scan & Fix Loop (Per App)
       for (const appName of appsToScan) {
