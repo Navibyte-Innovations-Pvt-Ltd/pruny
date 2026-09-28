@@ -193,7 +193,7 @@ The summary table always shows an "Internal Links" row when links are scanned, d
 
 ### Unused Exports
 
-Scans all named exports (`export function`, `export const`, `export class`, `export type`, etc.) and checks if they are imported by any other file. Uses worker threads for projects with 500+ files.
+Scans all named exports (`export function`, `export const`, `export class`, `export type`, etc.) and checks if they are imported by any other file. Each export is only checked against files that contain its name (token index), so large projects scan in seconds.
 
 ### Unused Files
 
