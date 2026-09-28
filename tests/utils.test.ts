@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import { minimatch } from 'minimatch';
 import {
+  matchGlob,
   sanitizeLine,
   resolveFilePath,
   getAppName,
@@ -160,5 +162,26 @@ describe('matchesFilter', () => {
 
   it('should match partial path', () => {
     expect(matchesFilter('src/components/ui/Dialog.tsx', 'components/ui')).toBe(true);
+  });
+});
+
+describe('matchGlob', () => {
+  const cases: [string, string, { dot?: boolean }?][] = [
+    ['/api/users/123', '/api/users/*'],
+    ['/api/users/123/posts', '/api/users/*'],
+    ['/api/users', '/api/**'],
+    ['/api/cron/daily', '/api/cron/**'],
+    ['.hidden/file.ts', '**/*.ts'],
+    ['.hidden/file.ts', '**/*.ts', { dot: true }],
+    ['#comment', '#comment'],
+    ['app/page.tsx', '*.tsx'],
+  ];
+
+  it('returns the same result as minimatch, including on repeat calls', () => {
+    for (const [path, pattern, options] of cases) {
+      const expected = minimatch(path, pattern, options);
+      expect(matchGlob(path, pattern, options)).toBe(expected);
+      expect(matchGlob(path, pattern, options)).toBe(expected);
+    }
   });
 });
