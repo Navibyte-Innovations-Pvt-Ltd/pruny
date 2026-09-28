@@ -1,7 +1,7 @@
 
 import fg from 'fast-glob';
-import { readFileSync } from 'node:fs';
 import type { Config } from '../types.js';
+import { readSourceFile } from '../utils.js';
 
 /**
  * Scan for HTTP client usage (axios, fetch)
@@ -34,7 +34,7 @@ export async function scanHttpUsage(config: Config): Promise<{ axios: number; fe
 
   for (const file of files) {
     try {
-      const content = readFileSync(file, 'utf-8');
+      const content = readSourceFile(file);
       
       const axiosMatches = content.match(axiosRegex);
       if (axiosMatches) axiosCount += axiosMatches.length;
