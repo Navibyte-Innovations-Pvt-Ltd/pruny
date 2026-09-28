@@ -4,7 +4,7 @@ import { relative } from 'node:path';
 import type { Config, UnusedServiceMethod } from '../types.js';
 import { findServiceProperties } from '../fixer.js';
 import { JS_KEYWORDS, NEST_LIFECYCLE_METHODS, FRAMEWORK_METHOD_DECORATORS, DEFAULT_IGNORE } from '../constants.js';
-import { sanitizeLine } from '../utils.js';
+import { sanitizeLine, readSourceFile } from '../utils.js';
 
 /**
  * Scan all service files (*.service.ts) in the project and find unused methods.
@@ -34,6 +34,21 @@ export async function scanUnusedServices(config: Config): Promise<{ total: numbe
     absolute: true
   });
 
+  // Each reference file is read at most once for the whole scan
+  const contentCache = new Map<string, string | null>();
+  const readCached = (file: string): string | null => {
+    let content = contentCache.get(file);
+    if (content === undefined) {
+      try {
+        content = readSourceFile(file);
+      } catch {
+        content = null;
+      }
+      contentCache.set(file, content);
+    }
+    return content;
+  };
+
   for (const serviceFile of serviceFiles) {
     try {
       const content = readFileSync(serviceFile, 'utf-8');
@@ -42,6 +57,26 @@ export async function scanUnusedServices(config: Config): Promise<{ total: numbe
       const classMatch = content.match(/export\s+class\s+(\w+)/);
       if (!classMatch) continue;
       const serviceClassName = classMatch[1];
+
+      // Files that import this service class, with the property names they bind it to.
+      // Computed once per service (lazily) instead of once per method × file.
+      let importers: { file: string; fileContent: string; serviceProps: string[] }[] | undefined;
+      const getImporters = () => {
+        if (importers) return importers;
+        importers = [];
+        const importRegex = new RegExp(`import.*\\b${serviceClassName}\\b.*from`);
+        for (const file of allFiles) {
+          if (file === serviceFile) continue;
+          const fileContent = readCached(file);
+          if (fileContent === null || !importRegex.test(fileContent)) continue;
+          try {
+            importers.push({ file, fileContent, serviceProps: findServiceProperties(fileContent, serviceClassName) });
+          } catch {
+            // Skip files we cannot analyze
+          }
+        }
+        return importers;
+      };
 
       // Find all methods in the service class using brace-depth tracking.
       // Only detect methods at class body level (braceDepth 1) to avoid
@@ -134,50 +169,37 @@ export async function scanUnusedServices(config: Config): Promise<{ total: numbe
               // Check if this method is used anywhere else
               const usedBy: UnusedServiceMethod['usedBy'] = [];
 
-              for (const file of allFiles) {
-                if (file === serviceFile) continue;
-
-                try {
-                  const fileContent = readFileSync(file, 'utf-8');
-
-                  const importRegex = new RegExp(`import.*\\b${serviceClassName}\\b.*from`);
-                  if (!importRegex.test(fileContent)) continue;
-
-                  const serviceProps = findServiceProperties(fileContent, serviceClassName);
-
-                  let usageFound = false;
-                  for (const propName of serviceProps) {
-                    const methodCallRegex = new RegExp(`this\\.${propName}\\.${methodName}\\s*\\(`);
-                    if (methodCallRegex.test(fileContent)) {
-                      usageFound = true;
-                      break;
-                    }
-                    const optionalChainRegex = new RegExp(`this\\.${propName}\\?\\.${methodName}\\s*\\(`);
-                    if (optionalChainRegex.test(fileContent)) {
-                      usageFound = true;
-                      break;
-                    }
-                  }
-
-                  if (!usageFound) {
-                    const directCallRegex = new RegExp(`\\.${methodName}\\s*\\(`);
-                    if (directCallRegex.test(fileContent)) {
-                      if (fileContent.includes(serviceClassName)) {
-                        usageFound = true;
-                      }
-                    }
-                  }
-
-                  if (usageFound) {
-                    let usageType: 'controller' | 'service' | 'module' = 'service';
-                    if (file.includes('.controller.')) usageType = 'controller';
-                    else if (file.includes('.module.')) usageType = 'module';
-
-                    usedBy.push({ file: relative(projectRoot, file), type: usageType });
+              for (const { file, fileContent, serviceProps } of getImporters()) {
+                let usageFound = false;
+                for (const propName of serviceProps) {
+                  const methodCallRegex = new RegExp(`this\\.${propName}\\.${methodName}\\s*\\(`);
+                  if (methodCallRegex.test(fileContent)) {
+                    usageFound = true;
                     break;
                   }
-                } catch {
-                  // Skip unreadable files
+                  const optionalChainRegex = new RegExp(`this\\.${propName}\\?\\.${methodName}\\s*\\(`);
+                  if (optionalChainRegex.test(fileContent)) {
+                    usageFound = true;
+                    break;
+                  }
+                }
+
+                if (!usageFound) {
+                  const directCallRegex = new RegExp(`\\.${methodName}\\s*\\(`);
+                  if (directCallRegex.test(fileContent)) {
+                    if (fileContent.includes(serviceClassName)) {
+                      usageFound = true;
+                    }
+                  }
+                }
+
+                if (usageFound) {
+                  let usageType: 'controller' | 'service' | 'module' = 'service';
+                  if (file.includes('.controller.')) usageType = 'controller';
+                  else if (file.includes('.module.')) usageType = 'module';
+
+                  usedBy.push({ file: relative(projectRoot, file), type: usageType });
+                  break;
                 }
               }
 
