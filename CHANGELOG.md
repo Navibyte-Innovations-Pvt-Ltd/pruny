@@ -1,3 +1,28 @@
+# [1.46.0](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.45.1...v1.46.0) (2026-09-28)
+
+
+### Bug Fixes
+
+* **broken-links:** update regex to match broken links ([62ca20a](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/62ca20aea6411a0b6d0f8644e01476428fde5aab))
+* **design-decisions:** split work across 2 workers for large projects (500+ files), except when the shared file cache is active (see Performance) — then every file is already in memory on the main thread and workers would only re-read and clone it ([7e48ebb](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/7e48ebb112e6b786a2dfe1c83d925005a99cac8f))
+* **exports-token-index:** handle new usage checks for unused exports ([8d1f5bb](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/8d1f5bbb148f09800e1acad63af59c41d8e0dd60))
+* **http-usage:** use readSourceFile to fetch file contents ([80ac34a](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/80ac34a42a7ebd63f146a2cd6ac9cd948147acb2))
+* **missing-assets:** update missing-assets.ts ([ea15375](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/ea153758a683590fffed1a570991130805551c53))
+* **public-assets:** add missing check for file exists in readSourceFile ([8315e2e](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/8315e2e4327b65bc3f325b156fb13cde24453064))
+* **scanner:** use new util functions for matching and reading source files ([7a191db](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/7a191db51f29bc685d214eb9e4ed7b8d662571e0))
+* **source-assets:** add util function to read source files ([24ece2e](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/24ece2e8703e955207ef78707c43ec003d9c101c))
+* **src:** cache file reads across scanners and apps ([33b8f73](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/33b8f7323509fb1a0adc6ec87baa57df802a405a))
+* **unused-services.test:** add test to ensure scanUnusedServices behaves as expected ([3a56751](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/3a56751f35160e1493f61f78dbef0b8b6d8e3110))
+* **unused-services:** move import cache management to utils.js ([1fef63b](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/1fef63bd010c449bf67e28848f8ba6cb742370bd))
+* **utils.test:** update matchGlob to use minimatch ([706e6f4](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/706e6f42085cabf8c34537e126bcf7d389070bbe))
+* **utils:** improve glob matching and file cache support ([d8bc6d0](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/d8bc6d0451904050129994d9a071a7cc43a6a9f8))
+
+
+### Features
+
+* **architecture:** add cached glob matching and shared file cache ([92f80ef](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/92f80ef5b1e8ca6f5fb484d6c3758f7ad7185754))
+* **unused-files:** add support for using glob patterns in `.ignore.files` ([7534331](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/commit/753433195bf059ea073d51b00f6fe73b1c516d1b))
+
 ## [1.45.1](https://github.com/Navibyte-Innovations-Pvt-Ltd/pruny/compare/v1.45.0...v1.45.1) (2026-05-01)
 
 
