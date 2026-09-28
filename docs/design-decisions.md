@@ -6,7 +6,18 @@ Detailed rationale and implementation notes for non-obvious behavior. Update thi
 
 - **Regex over AST**: All code analysis uses regex pattern matching from `src/patterns.ts`, not an AST parser. Changes to detection logic should update patterns there. The broken-links scanner (`src/scanners/broken-links.ts`) has its own link-extraction patterns separate from `patterns.ts`. The unused-files scanner (`src/scanners/unused-files.ts`) also has its own import regex that handles `from '...'`, `import('...')` (including webpack magic comments like `/* webpackChunkName */`), and `require('...')`.
 - **Two-pass deletion**: Fix mode runs a second `scanUnusedExports()` pass after deleting routes to catch newly dead code. Service files (`.service.ts`) are skipped in the second pass.
-- **Worker threads**: `unused-exports.ts` splits work across 2 workers for large projects (500+ files).
+- **Worker threads**: `unused-exports.ts` splits work across 2 workers for large projects (500+ files), except when the shared file cache is active (see Performance) — then every file is already in memory on the main thread and workers would only re-read and clone it.
+
+## Performance
+
+Budget: a 2.7k-file Next.js app (practice-stack `web`) scans in ~5s. Before these changes it took ~445s. Keep every check below O(files) per item — any loop of shape "for each export/method/route × for each file" must go through an index or a per-item cache.
+
+- **Token index for export usage** (`buildReferenceIndex` in `unused-exports.ts`): maps every `\w+` token to the files containing it. Each export only visits files whose content contains its name as a whole token. This is exact, not a heuristic: every usage check (`\bname\b`, JSX `<name`, `import … name … from`) needs the name as a maximal `\w+` run. Names with a non-`\w` character (`$store`) skip the index and scan every file. Per-file derived data (lines, string-stripped content, `/apps/<x>/` membership) is computed once per file and memoized. Tests: `tests/exports-token-index.test.ts`.
+- **Service method usage** (`unused-services.ts`): the list of files importing a service class, along with the property names bound to it, is computed once per service. Methods only check that list. Previously every method re-read every file from disk.
+- **Glob matching** (`matchGlob` in `utils.ts`): same result as `minimatch()`, but each compiled `Minimatch` is cached by pattern. `checkRouteUsage` calls this routes × references × variations times.
+- **Shared file cache** (`startFileCache` / `readSourceFile` in `utils.ts`): scanners read source files through `readSourceFile`. The CLI starts a fresh cache at the beginning of each non-fix pass, so all scanners and all apps in `--all` share one read per file. **Fix mode never enables it**, because the fixer edits files between scans and rescan must see disk. The cache is off by default, so tests and library callers always read from disk. Do not enable it anywhere files may change mid-run.
+- **Verifying a perf change**: compare full `--json` output before and after on practice-stack, abhyaiska, and a repo with non-zero unused items (e.g. glitchgrab). Sort arrays before diffing and ignore `publicAssets[].references`: it records the first-found file, which depends on glob order and differs from run to run.
+- **Known pre-existing limitations** kept as-is by the perf work: `$`-prefixed exports are always reported unused (`\b` never matches before `$`), and a name mentioned only in a `//` comment in another file counts as used (the fast path strips strings, not comments).
 
 ## Project layout & monorepo
 
