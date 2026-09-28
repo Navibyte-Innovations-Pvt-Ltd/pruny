@@ -5,6 +5,7 @@
 
 import { isAbsolute, join, resolve, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+import { Minimatch, type MinimatchOptions } from 'minimatch';
 
 export type AppFramework = 'nextjs' | 'nestjs' | 'expo' | 'react-native' | 'unknown';
 
@@ -229,4 +230,48 @@ function readTsConfigWithExtends(configPath: string): { paths?: Record<string, s
   } catch {
     return {};
   }
+}
+
+const globCache = new Map<string, Minimatch | null>();
+
+/**
+ * Same result as `minimatch(path, pattern, options)`, but each pattern is compiled
+ * once and reused. Route matching calls this routes × references times; compiling
+ * the glob on every call was the dominant cost after the exports index.
+ */
+export function matchGlob(path: string, pattern: string, options?: MinimatchOptions): boolean {
+  const key = options ? `${pattern}\0${JSON.stringify(options)}` : pattern;
+  let mm = globCache.get(key);
+  if (mm === undefined) {
+    // minimatch(): comments match nothing (unless nocomment)
+    mm = !options?.nocomment && pattern.charAt(0) === '#' ? null : new Minimatch(pattern, options);
+    globCache.set(key, mm);
+  }
+  return mm ? mm.match(path) : false;
+}
+
+let fileCache: Map<string, string> | null = null;
+
+/**
+ * Start a fresh shared file-content cache, reused by every scanner and every app
+ * until the next call. Only safe while nothing modifies files (report / CI / --json),
+ * so it is off by default and fix mode never enables it.
+ */
+export function startFileCache(): void {
+  fileCache = new Map();
+}
+
+export function isFileCacheActive(): boolean {
+  return fileCache !== null;
+}
+
+/** readFileSync(path, 'utf-8'), served from the shared cache when enabled. */
+export function readSourceFile(path: string): string {
+  if (!fileCache) return readFileSync(path, 'utf-8');
+  let content = fileCache.get(path);
+  if (content === undefined) {
+    content = readFileSync(path, 'utf-8');
+    fileCache.set(path, content);
+  }
+  return content;
 }
