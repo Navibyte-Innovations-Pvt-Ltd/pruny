@@ -1,8 +1,9 @@
 import fg from 'fast-glob';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config } from '../types.js';
 import { shouldIgnore } from '../scanner.js';
+import { readSourceFile } from '../utils.js';
 
 export interface PublicAsset {
   path: string;        // Absolute path
@@ -67,7 +68,7 @@ export async function scanPublicAssets(config: Config): Promise<PublicScanResult
   for (const file of sourceFiles) {
     const filePath = join(sourceCwd, file);
     try {
-      const content = readFileSync(filePath, 'utf-8');
+      const content = readSourceFile(filePath);
       
       for (const asset of assets) {
         if (asset.used) continue; // Optimization: stop checking if already found
