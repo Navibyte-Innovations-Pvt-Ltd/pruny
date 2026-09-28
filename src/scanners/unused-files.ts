@@ -1,9 +1,8 @@
 import fg from 'fast-glob';
-import { readFileSync, statSync, existsSync } from 'node:fs';
+import { statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import type { Config, UnusedFile } from '../types.js';
-import { minimatch } from 'minimatch';
-import { parseTsConfigPaths, detectAppFramework, stripComments } from '../utils.js';
+import { parseTsConfigPaths, detectAppFramework, stripComments, matchGlob, readSourceFile } from '../utils.js';
 
 /**
  * Scan for unused source files (.ts, .tsx, .js, .jsx)
@@ -46,7 +45,7 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
   if (config.ignore.files.length > 0) {
     for (const file of allFiles) {
       const relPath = relative(searchDir, file);
-      if (config.ignore.files.some(pattern => minimatch(relPath, pattern, { dot: true }))) {
+      if (config.ignore.files.some(pattern => matchGlob(relPath, pattern, { dot: true }))) {
         ignoredFileSet.add(file);
       }
     }
@@ -136,7 +135,7 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
   for (const file of allFiles) {
     const relPath = relative(searchDir, file);
     const isEntry = entryPatterns.some(pattern => {
-       return minimatch(relPath, pattern, { dot: true });
+       return matchGlob(relPath, pattern, { dot: true });
     });
 
     if (isEntry) entryFiles.add(file);
@@ -172,7 +171,7 @@ export async function scanUnusedFiles(config: Config): Promise<{ total: number; 
     const currentDir = dirname(currentFile);
 
     try {
-      const rawContent = readFileSync(currentFile, 'utf-8');
+      const rawContent = readSourceFile(currentFile);
       // Strip comments before scanning so that commented-out imports
       // (e.g. `// import Foo from './foo'`) are not treated as active references.
       const content = stripComments(rawContent);
