@@ -1,7 +1,8 @@
 import fg from 'fast-glob';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Config } from '../types.js';
+import { readSourceFile } from '../utils.js';
 
 // Next.js App Router metadata convention file prefixes
 // These files in app/ are served at root URLs (e.g., app/icon.png → /icon.png)
@@ -50,7 +51,7 @@ export async function scanMissingAssets(config: Config): Promise<MissingAssetsRe
 
   for (const file of sourceFiles) {
     try {
-      const content = readFileSync(file, 'utf-8');
+      const content = readSourceFile(file);
       let match;
       
       // Reset lastIndex for global regex

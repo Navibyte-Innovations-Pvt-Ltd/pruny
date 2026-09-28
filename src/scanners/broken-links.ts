@@ -1,9 +1,8 @@
 import fg from 'fast-glob';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { minimatch } from 'minimatch';
 import type { Config } from '../types.js';
-import { detectAppFramework, parseTsConfigPaths } from '../utils.js';
+import { detectAppFramework, parseTsConfigPaths, matchGlob, readSourceFile } from '../utils.js';
 
 export interface BrokenLink {
   path: string;          // e.g. '/signup'
@@ -354,9 +353,9 @@ function isGitignoredPublicFile(appDir: string, linkPath: string): boolean {
         .filter(l => l && !l.startsWith('#') && !l.startsWith('!'));
 
       for (const pattern of patterns) {
-        if (minimatch(publicRelPath, pattern, { dot: true }) ||
-            minimatch(linkPath.slice(1), pattern, { dot: true }) ||
-            minimatch(`**/public${linkPath}`, pattern, { dot: true })) {
+        if (matchGlob(publicRelPath, pattern, { dot: true }) ||
+            matchGlob(linkPath.slice(1), pattern, { dot: true }) ||
+            matchGlob(`**/public${linkPath}`, pattern, { dot: true })) {
           return true;
         }
       }
@@ -469,7 +468,7 @@ export async function scanBrokenLinks(config: Config): Promise<BrokenLinksResult
 
   for (const file of sourceFiles) {
     try {
-      const content = readFileSync(file, 'utf-8');
+      const content = readSourceFile(file);
 
       for (const pattern of LINK_PATTERNS) {
         pattern.lastIndex = 0;

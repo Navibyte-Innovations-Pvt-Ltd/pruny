@@ -1,7 +1,7 @@
 import fg from 'fast-glob';
-import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type { Config } from '../types.js';
+import { readSourceFile } from '../utils.js';
 
 export interface SourceAsset {
   path: string;        // Absolute path
@@ -67,7 +67,7 @@ export async function scanSourceAssets(config: Config): Promise<SourceAssetScanR
   // Or used in CSS/SCSS? (We are only scanning JS/TS files for now per config.extensions)
   
   for (const src of sourceFiles) {
-    const content = readFileSync(src, 'utf-8');
+    const content = readSourceFile(src);
     
     for (const [_assetPath, asset] of assetMap) {
       if (asset.used) continue; // Already marked used

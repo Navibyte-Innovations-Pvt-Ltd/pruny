@@ -10,7 +10,7 @@ import {
   type ApiReference
 } from './patterns.js';
 import type { Config, ApiRoute, ScanResult, VercelConfig } from './types.js';
-import { minimatch } from 'minimatch';
+import { matchGlob, readSourceFile } from './utils.js';
 import { scanPublicAssets } from './scanners/public-assets.js';
 import { scanUnusedFiles } from './scanners/unused-files.js';
 import { scanUnusedExports } from './scanners/unused-exports.js';
@@ -233,7 +233,7 @@ export function shouldIgnore(path: string, ignorePatterns: string[]): boolean {
     if (isAbsolute) cleanPattern = cleanPattern.substring(1);
 
     // 1. Exact or glob match
-    if (minimatch(cleanPath, cleanPattern)) return true;
+    if (matchGlob(cleanPath, cleanPattern)) return true;
 
     // 2. Folder check
     const folderPattern = cleanPattern.endsWith('/') ? cleanPattern : cleanPattern + '/';
@@ -359,7 +359,7 @@ function checkRouteUsage(route: ApiRoute, references: ApiReference[], nestGlobal
     for (const v of variations) {
       if (v === normalizedFound || 
           normalizedFound.startsWith(v + '/') ||
-          minimatch(normalizedFound, v)) {
+          matchGlob(normalizedFound, v)) {
         match = true;
         break;
       }
@@ -605,7 +605,7 @@ export async function scan(config: Config): Promise<ScanResult> {
     for (const route of routes) {
       if (route.used) continue;
       const normalizedRoute = route.path.toLowerCase().replace(/\/$/, '');
-      if (normalizedRoute === normalizedExt || minimatch(normalizedRoute, normalizedExt)) {
+      if (normalizedRoute === normalizedExt || matchGlob(normalizedRoute, normalizedExt)) {
         route.used = true;
         route.references.push('.github/workflows');
         route.unusedMethods = [];
@@ -620,7 +620,7 @@ export async function scan(config: Config): Promise<ScanResult> {
   for (const extPath of autoDetectedPaths) {
     for (const route of routes) {
       if (route.used) continue;
-      if (minimatch(route.path, extPath) || route.path === extPath) {
+      if (matchGlob(route.path, extPath) || route.path === extPath) {
         route.used = true;
         route.references.push('(auto-detected external)');
         route.unusedMethods = [];
@@ -646,7 +646,7 @@ export async function scan(config: Config): Promise<ScanResult> {
   for (const file of sourceFiles) {
     const filePath = join(referenceScanCwd, file);
     try {
-      const content = readFileSync(filePath, 'utf-8');
+      const content = readSourceFile(filePath);
       const refs = extractApiReferences(content);
 
       if (refs.length > 0) {
@@ -763,7 +763,7 @@ export async function scan(config: Config): Promise<ScanResult> {
         if (!normalizedRef.startsWith('/api/') && !normalizedRef.startsWith('/api?')) {
           if (normalizedRef === nestPathDirect ||
               normalizedRef.startsWith(nestPathDirect + '/') ||
-              minimatch(normalizedRef, nestPathDirect)) {
+              matchGlob(normalizedRef, nestPathDirect)) {
             hasDirectReference = true;
             break;
           }

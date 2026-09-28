@@ -13,7 +13,7 @@
 - **`src/config.ts`** — Config loading (`pruny.config.json`, `.prunyrc`), `.gitignore` integration, config merging
 - **`src/types.ts`** — All TypeScript interfaces (`Config`, `ApiRoute`, `ScanResult`, `UnusedExport`, etc.)
 - **`src/constants.ts`** — Shared constants (ignored exports, lifecycle methods, invalid names, regexes)
-- **`src/utils.ts`** — Shared utilities (path resolution, filter matching, regex helpers, brace-count sanitization)
+- **`src/utils.ts`** — Shared utilities (path resolution, filter matching, regex helpers, brace-count sanitization, cached glob matching `matchGlob`, shared file cache `readSourceFile`/`startFileCache`)
 - **`src/init.ts`** — `pruny init` subcommand
 
 ## Scanners (`src/scanners/`)
@@ -22,7 +22,7 @@ Each scanner is a standalone module called by `scanner.ts`:
 
 - `broken-links.ts` — Validates internal link references (`<Link>`, `router.push`, `redirect`, etc.) against known page routes. Supports dynamic segments, multi-tenant subdomain routing (auto-detects routes under `[domain]`-style parents), `generateStaticParams` resolution, and public static file resolution.
 - `unused-files.ts` — Graph-based reachability analysis from entry points
-- `unused-exports.ts` — Named export and class method usage (uses worker threads for 500+ files via `src/workers/file-processor.ts`)
+- `unused-exports.ts` — Named export and class method usage. Token index limits each export to the files that mention it; uses worker threads for 500+ files via `src/workers/file-processor.ts` unless the shared file cache is active (see design-decisions → Performance)
 - `unused-services.ts` — NestJS service method usage analysis
 - `public-assets.ts` — Unused files in `public/`
 - `source-assets.ts` — Unused media files in source directories
